@@ -1,0 +1,12 @@
+pyomo>=6.7
+gurobipy>=11.0
+openpyxl>=3.1
+pandas>=2.0
+streamlit>=1.30
+
+# Solver alternativo gratuito, opcional. Solo hace falta si CONFIG!SOLVER se
+# pone a "appsi_highs" en vez de "gurobi" (por ejemplo, para probar el
+# sistema sin una licencia de Gurobi de tamaño real: la que se instala con
+# `pip install gurobipy` es de prueba y limita el modelo a 2000
+# variables/restricciones, muy por debajo de las ~6500 de este problema).
+highspy>=1.7

@@ -1,0 +1,49 @@
+"""Función objetivo: suma ponderada de las penalizaciones registradas.
+
+    min   W_FALTA        · Σ falta[t,d]
+        + W_EQUIDAD      · (cmax - cmin)
+        + W_DESCANSO_LIM · Σ_{m: PENALIZAR_DESCANSO=1, d} r[m,d]
+        + W_VARIEDAD     · Σ z[m,p]
+        + W_REPETICION   · Σ rep[m,t,d]
+        + W_FALTA_DESC   · Σ falta_desc[m,v]
+        + W_FALTA        · Σ r[m,d] forzados del grupo FINDE (caso degradado)
+
+Cada restricción "blanda" (y `cobertura`, que aunque es dura genera holgura
+penalizada) registra su expresión sin ponderar en `m._penalizaciones` con
+`restricciones.base.registrar_penalizacion`. Este módulo solo sabe qué peso
+de CONFIG le corresponde a cada nombre y las suma. Si una restricción no
+está activa, su expresión nunca se registró y simplemente no aparece en la
+suma: no hay que tocar este fichero para activar/desactivar penalizaciones,
+solo la hoja RESTRICCIONES.
+"""
+from pyomo.environ import Objective, minimize
+
+# nombre de la restricción (o penalización interna) -> atributo de Config con su peso
+PESO_POR_PENALIZACION = {
+    "cobertura": "w_falta",
+    "finde_sin_descanso_forzado": "w_falta",
+    "penalizar_descanso_limitado": "w_descanso_lim",
+    "variedad_dependiente": "w_variedad",
+    "no_repetir_turno": "w_repeticion",
+    "descanso_minimo": "w_falta_desc",
+}
+
+
+def construir_objetivo(m, datos, cfg):
+    penalizaciones = getattr(m, "_penalizaciones", {})
+
+    expr = 0
+    for nombre, expresion in penalizaciones.items():
+        if nombre == "equidad_esfuerzo":
+            continue  # se trata aparte, no es una suma de holguras
+        peso_attr = PESO_POR_PENALIZACION.get(nombre)
+        if peso_attr is None:
+            continue
+        peso = getattr(cfg, peso_attr)
+        expr = expr + peso * expresion
+
+    if hasattr(m, "cmax") and hasattr(m, "cmin"):
+        expr = expr + cfg.w_equidad * (m.cmax - m.cmin)
+
+    m.objetivo = Objective(expr=expr, sense=minimize)
+    return m.objetivo
