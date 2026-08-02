@@ -1,7 +1,7 @@
-"""Optimizador de turnos del campamento (quincena de julio de 2026).
+"""Optimizador de turnos para los campamentos de la Fundación Proyecto Persona.
 
-El Excel `TURNOS_2026_definitivo.xlsx` es la única fuente de verdad: de ahí se
-lee el problema y ahí se escribe la solución. No hay base de datos.
+El Excel de cada campamento (carpeta `datos/`) es la única fuente de verdad:
+de ahí se lee el problema y ahí se escribe la solución. No hay base de datos.
 """
 
 __version__ = "1.0.0"

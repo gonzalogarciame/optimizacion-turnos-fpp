@@ -19,7 +19,7 @@ from ..io_excel.lector import ErrorLecturaExcel, leer_datos
 from ..modelo.datos import Datos
 from ..nombres import ErrorNombreNoReconocido
 
-RUTA_POR_DEFECTO = "TURNOS_2026_definitivo.xlsx"
+RUTA_POR_DEFECTO = "datos/2026-quincena2-18al30jul/turnos.xlsx"
 
 
 def inicializar_estado() -> None:

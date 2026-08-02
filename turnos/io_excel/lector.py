@@ -1,12 +1,13 @@
 """Excel -> objeto Datos, ya validado.
 
-Este módulo es el único que sabe cómo está organizado el libro
-`TURNOS_2026_definitivo.xlsx`. Produce un objeto `modelo.datos.Datos` que
-`modelo.construir` consume sin volver a tocar el Excel.
+Este módulo es el único que sabe cómo está organizado el libro de turnos de
+un campamento (ver README, "Estructura de datos"). Produce un objeto
+`modelo.datos.Datos` que `modelo.construir` consume sin volver a tocar el
+Excel.
 
 Cualquier nombre de monitor que aparezca en la rejilla y no se reconozca ni
 en `MONITORES` ni en `ALIAS` aborta la lectura con un error que indica la
-celda exacta (no se ignora en silencio, como pide el enunciado).
+celda exacta (no se ignora en silencio).
 """
 from __future__ import annotations
 
