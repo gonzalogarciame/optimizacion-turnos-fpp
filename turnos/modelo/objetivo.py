@@ -7,6 +7,7 @@
         + W_REPETICION   · Σ rep[m,t,d]
         + W_FALTA_DESC   · Σ falta_desc[m,v]
         + W_FALTA        · Σ r[m,d] forzados del grupo FINDE (caso degradado)
+        + W_EXTRA        · Σ extra[t,d]   (gente por encima de las plazas, ver PLAZAS_MAX_POR_DIA)
 
 Cada restricción "blanda" (y `cobertura`, que aunque es dura genera holgura
 penalizada) registra su expresión sin ponderar en `m._penalizaciones` con
@@ -21,6 +22,7 @@ from pyomo.environ import Objective, minimize
 # nombre de la restricción (o penalización interna) -> atributo de Config con su peso
 PESO_POR_PENALIZACION = {
     "cobertura": "w_falta",
+    "plazas_extra": "w_extra",
     "finde_sin_descanso_forzado": "w_falta",
     "penalizar_descanso_limitado": "w_descanso_lim",
     "variedad_dependiente": "w_variedad",

@@ -103,6 +103,7 @@ class LectorExcel:
         tipos_turno_todos = self._leer_tipos_turno(wb["TIPOS_TURNO"])
         turnos = {k: v for k, v in tipos_turno_todos.items() if k != TURNO_DESCANSO}
         plazas = self._leer_plazas_por_dia(wb["PLAZAS_POR_DIA"], turnos, dias)
+        plazas_max = self._leer_plazas_max(wb, turnos, plazas, dias)
         dependientes = self._leer_dependientes(wb["DEPENDIENTES"])
         asig_dependiente = self._leer_asig_dependiente(
             wb["ASIG_DEPENDIENTE"], dependientes, resolver, dias
@@ -114,6 +115,7 @@ class LectorExcel:
             wb["TURNOS"], turnos, dependientes, resolver, dias, cfg.dia_reoptimizacion
         )
         fijaciones = fijaciones + fijaciones_amarillas
+        plazas_tope = self._calcular_plazas_tope(plazas, historico_x, fijaciones)
 
         dias_presente = self._calcular_dias_presente(disponibilidad, monitores, dias)
 
@@ -132,6 +134,8 @@ class LectorExcel:
             dias_presente=dias_presente,
             restricciones=restricciones,
             avisos=self._avisos,
+            plazas_max=plazas_max,
+            plazas_tope=plazas_tope,
         )
 
         self._validar_historico_completo(datos)
@@ -287,6 +291,57 @@ class LectorExcel:
                     f"se usan las {tt.plazas_default} plazas por defecto de TIPOS_TURNO todos los días"
                 )
         return plazas
+
+    def _leer_plazas_max(self, wb, turnos, plazas, dias) -> Dict[Tuple[str, int], int]:
+        """Hoja opcional PLAZAS_MAX_POR_DIA: máximo de personas que acepta un turno un día.
+
+        Misma disposición que PLAZAS_POR_DIA (turno en la columna A, un día por
+        columna). Una celda vacía, o con un valor <= las plazas, significa "no
+        acepta más gente de la necesaria". Si la hoja no existe, ningún turno
+        acepta extras (comportamiento de siempre).
+        """
+        if "PLAZAS_MAX_POR_DIA" not in wb.sheetnames:
+            return {}
+        ws = wb["PLAZAS_MAX_POR_DIA"]
+        mapa_dias = _mapa_dias_por_columna(ws, 1, 2, ws.max_column)
+        maximos: Dict[Tuple[str, int], int] = {}
+        for fila in range(2, ws.max_row + 1):
+            turno = _texto(ws.cell(fila, 1).value)
+            if not turno:
+                continue
+            if turno not in turnos:
+                self._avisos.append(f"PLAZAS_MAX_POR_DIA!A{fila}: turno '{turno}' no existe en TIPOS_TURNO; se ignora")
+                continue
+            for dia in dias:
+                col = mapa_dias.get(dia)
+                valor = ws.cell(fila, col).value if col else None
+                if valor in (None, ""):
+                    continue
+                try:
+                    n = int(valor)
+                except (TypeError, ValueError):
+                    raise ErrorLecturaExcel(
+                        f"PLAZAS_MAX_POR_DIA!{ws.cell(fila, col).coordinate}: '{valor}' no es un número de plazas"
+                    )
+                if n < 0:
+                    raise ErrorLecturaExcel(f"PLAZAS_MAX_POR_DIA!{ws.cell(fila, col).coordinate}: no puede ser negativo")
+                if n > plazas[(turno, dia)]:
+                    maximos[(turno, dia)] = n
+        return maximos
+
+    @staticmethod
+    def _calcular_plazas_tope(plazas, historico_x, fijaciones) -> Dict[Tuple[str, int], int]:
+        """Días en que lo ya escrito (histórico o celdas fijadas) supera las plazas.
+
+        Sin esto, una casilla de más en la rejilla haría infactible la igualdad de
+        `cobertura`; así el turno simplemente acepta esa gente ese día.
+        """
+        escritos = set(historico_x)
+        escritos |= {(f.monitor, f.turno, f.dia) for f in fijaciones if f.tipo == "OBLIGA"}
+        cuenta: Dict[Tuple[str, int], int] = {}
+        for (_, turno, dia) in escritos:
+            cuenta[(turno, dia)] = cuenta.get((turno, dia), 0) + 1
+        return {k: n for k, n in cuenta.items() if n > plazas.get(k, 0)}
 
     def _leer_dependientes(self, ws: Worksheet) -> Dict[str, Dependiente]:
         cab = {_texto(c.value).upper(): idx + 1 for idx, c in enumerate(ws[1])}
@@ -533,7 +588,9 @@ class LectorExcel:
         día).
         """
         for dia in datos.dias:
-            capacidad_total = sum(datos.plazas.get((t, dia), 0) for t in datos.turnos)
+            # Con PLAZAS_MAX_POR_DIA los turnos admiten gente de más: ese es el sitio
+            # que tienen los monitores de fin de semana para no descansar.
+            capacidad_total = sum(datos.tope(t, dia) for t in datos.turnos)
             capacidad_total += sum(
                 1
                 for (acampado, d), v in datos.asig_dependiente.items()

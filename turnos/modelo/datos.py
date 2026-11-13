@@ -44,6 +44,10 @@ class Config:
     w_repeticion: float
     w_falta_desc: float
     max_dias_por_dep: int = 3
+    # Coste de cada persona que un turno acepta por encima de sus plazas
+    # (ver PLAZAS_MAX_POR_DIA). Menor que el de dejar descansar a un monitor de
+    # fin de semana y mayor que el beneficio de equilibrar esfuerzo con extras.
+    w_extra: float = 40.0
 
     @property
     def dias(self) -> List[int]:
@@ -129,6 +133,19 @@ class Datos:
     finde_forzar_blanda: bool = False
 
     avisos: List[str] = field(default_factory=list)
+
+    # (turno, dia) -> máximo de personas que el turno acepta ese día, tal como
+    # lo declara la hoja opcional PLAZAS_MAX_POR_DIA (siempre >= plazas).
+    plazas_max: Dict[Tuple[str, int], int] = field(default_factory=dict)
+    # Igual, pero ampliado con lo que ya está escrito (histórico o celdas
+    # fijadas): una celda con más gente que plazas no debe volver infactible
+    # el modelo. Es lo que usa `cobertura`.
+    plazas_tope: Dict[Tuple[str, int], int] = field(default_factory=dict)
+
+    def tope(self, turno: str, dia: int) -> int:
+        """Máximo de personas que `turno` puede tener ese día."""
+        base = self.plazas.get((turno, dia), 0)
+        return max(base, self.plazas_max.get((turno, dia), 0), self.plazas_tope.get((turno, dia), 0))
 
     def turno_de_fila(self, fila: int) -> Optional[str]:
         for t in self.turnos.values():

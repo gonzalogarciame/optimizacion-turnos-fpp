@@ -34,7 +34,8 @@ _CLAVES_OBLIGATORIAS = {
 
 # Claves opcionales: si no aparecen, se usa el valor por defecto de Config.
 _CLAVES_OPCIONALES = {
-    "MAX_DIAS_POR_DEP": int,
+    "MAX_DIAS_POR_DEP": ("max_dias_por_dep", int),
+    "W_EXTRA": ("w_extra", float),
 }
 
 # La hoja puede traer el nombre de la clave de año con o sin tilde según la
@@ -96,9 +97,9 @@ def leer_config(ws) -> Config:
         w_falta_desc=valores["W_FALTA_DESC"],
     )
 
-    for clave, tipo in _CLAVES_OPCIONALES.items():
+    for clave, (atributo, tipo) in _CLAVES_OPCIONALES.items():
         if clave in pares and pares[clave] not in (None, ""):
-            kwargs["max_dias_por_dep"] = tipo(pares[clave])
+            kwargs[atributo] = tipo(pares[clave])
 
     cfg = Config(**kwargs)
 
