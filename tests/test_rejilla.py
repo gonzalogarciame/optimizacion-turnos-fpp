@@ -147,3 +147,33 @@ def test_notas_al_pie_de_plazas_no_son_turnos(excel):
     ws.cell(fila + 1, 2).value = 3
     wb.save(ruta)
     assert [a for a in leer_datos(ruta, desde=dia0).avisos if "turno_inventado" in a]
+
+
+def test_descansos_asignados_salen_de_la_seccion_descanso(excel):
+    from turnos.io_excel.rejilla import descansos_asignados
+    ruta, datos = excel
+    rej = leer_rejilla(ruta, datos)
+    desc = next(s for s in rej["secciones"] if s["tipo"] == "descanso")
+    esperado = {}
+    for f in desc["filas"]:
+        for dia, c in f["celdas"].items():
+            if c["v"] and c["v"] != "-":
+                esperado.setdefault(c["v"], set()).add(int(dia))
+    res = descansos_asignados(ruta, datos)
+    assert {n: set(ds) for n, ds in res.items()} == esperado
+    assert all(n in datos.monitores for n in res)
+    assert all(d in datos.dias for ds in res.values() for d in ds)
+
+
+def test_asignaciones_trabajo_coinciden_con_las_secciones(excel):
+    from turnos.io_excel.rejilla import asignaciones_trabajo
+    ruta, datos = excel
+    rej = leer_rejilla(ruta, datos)
+    esperado = 0
+    for sec in rej["secciones"]:
+        if sec["tipo"] in ("turno", "dependiente"):
+            esperado += sum(1 for f in sec["filas"] for c in f["celdas"].values() if c["v"] and c["v"] != "-")
+    res = asignaciones_trabajo(ruta, datos)
+    assert all(n in datos.monitores for n in res)
+    assert sum(len(v) for v in res.values()) <= esperado  # un monitor/dia aparece una vez (si hay conflicto, menos)
+    assert sum(len(v) for v in res.values()) > 0

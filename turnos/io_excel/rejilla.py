@@ -201,6 +201,33 @@ def leer_rejilla(ruta: str, datos: Datos) -> dict:
     return {"secciones": secciones, "alias": alias}
 
 
+def descansos_asignados(ruta: str, datos: Datos) -> Dict[str, List[int]]:
+    """Días de descanso que hay escritos en la sección DESCANSO de TURNOS, por monitor."""
+    seccion = next((s for s in leer_rejilla(ruta, datos)["secciones"] if s["tipo"] == "descanso"), None)
+    res: Dict[str, List[int]] = {}
+    for fila in (seccion["filas"] if seccion else []):
+        for dia, celda in fila["celdas"].items():
+            nombre = celda.get("v")
+            if nombre and nombre != "-":
+                res.setdefault(nombre, []).append(int(dia))
+    return {n: sorted(set(ds)) for n, ds in res.items()}
+
+
+def asignaciones_trabajo(ruta: str, datos: Datos) -> Dict[str, Dict[str, str]]:
+    """Turnos y dependientes escritos en TURNOS: {monitor: {dia: "turno" | "dependiente: X"}}."""
+    res: Dict[str, Dict[str, str]] = {}
+    for sec in leer_rejilla(ruta, datos)["secciones"]:
+        if sec["tipo"] not in ("turno", "dependiente"):
+            continue
+        for fila in sec["filas"]:
+            etiqueta = sec["titulo"] if sec["tipo"] == "turno" else f"dependiente {fila['etiqueta']}"
+            for dia, celda in fila["celdas"].items():
+                nombre = celda.get("v")
+                if nombre and nombre != "-":
+                    res.setdefault(nombre, {})[dia] = etiqueta
+    return res
+
+
 # ----------------------------------------------------------------------
 # Escritura
 # ----------------------------------------------------------------------

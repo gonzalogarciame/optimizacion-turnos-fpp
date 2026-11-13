@@ -45,6 +45,8 @@ from ..io_excel.lector import ErrorLecturaExcel, leer_datos
 from ..io_excel.rejilla import (
     ErrorEdicionRejilla,
     guardar_cambios_rejilla,
+    asignaciones_trabajo,
+    descansos_asignados,
     info_dias,
     leer_rejilla,
 )
@@ -313,6 +315,10 @@ def crear_app() -> Flask:
                 for m in datos.monitores.values()
             },
             "filas": _filas_json(leer_disponibilidad_df(ruta, datos.dias)),
+            # Descansos que ya hay asignados en la rejilla (hoja TURNOS), por monitor.
+            "descansos": descansos_asignados(ruta, datos),
+            # Turnos y dependientes ya escritos en la rejilla, para avisar si se les quita la disponibilidad.
+            "asignaciones": asignaciones_trabajo(ruta, datos),
         })
 
     @app.post("/api/disponibilidad")

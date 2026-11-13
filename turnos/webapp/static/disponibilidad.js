@@ -21,7 +21,9 @@ const PINCELES = {
 const DP = {
   dias: [],
   diasInfo: [],
-  filas: [],            // [{nombre, meta, vals:{dia: código}}]
+  filas: [],            // [{nombre, meta, vals:{dia: código}, desc:Set(días)}]
+  descansos: {},        // monitor -> [días con descanso asignado en la rejilla]
+  asig: {},             // monitor -> {día: "turno"} lo que tiene escrito en la rejilla (turnos y dependientes)
   orig: new Map(),      // "i|dia" -> código guardado
   pincel: "X",
   texto: "",
@@ -64,6 +66,8 @@ async function renderDisponibilidad(cont) {
   DP.diasInfo = r.dias_info || r.dias.map((dia) => ({ dia, semana: "", finde: false }));
   DP.orig = new Map();
   DP.deshacer = [];
+  DP.descansos = r.descansos || {};
+  DP.asig = r.asignaciones || {};
   DP.filas = r.filas.map((f, i) => {
     const vals = {};
     DP.dias.forEach((d) => {
@@ -71,7 +75,12 @@ async function renderDisponibilidad(cont) {
       vals[d] = PINCELES[v] ? v : "D";
       DP.orig.set(claveDisp(i, d), vals[d]);
     });
-    return { nombre: f.NOMBRE, meta: r.monitores[f.NOMBRE] || { sexo: "", grupo: "", descansa: true }, vals };
+    return {
+      nombre: f.NOMBRE,
+      meta: r.monitores[f.NOMBRE] || { sexo: "", grupo: "", descansa: true },
+      vals,
+      desc: new Set((DP.descansos[f.NOMBRE] || []).map(Number)),
+    };
   });
   const grupos = [...new Set(DP.filas.map((f) => f.meta.grupo).filter(Boolean))].sort();
 
@@ -93,6 +102,8 @@ async function renderDisponibilidad(cont) {
         <select id="disp-ver">
           <option value="todos">Todos</option>
           <option value="ausencias">Con ausencias</option>
+          <option value="descansos">Con descanso asignado</option>
+          <option value="reasignar">Por reasignar</option>
           <option value="cambios">Cambiados</option>
         </select>
       </div>
@@ -107,6 +118,8 @@ async function renderDisponibilidad(cont) {
     <div class="tablero-caja" id="disp-caja"></div>
     <div class="leyenda">
       ${Object.entries(PINCELES).map(([c, p]) => `<span><i class="lg d-${c}"></i> ${p.texto}: ${p.ayuda.toLowerCase()}</span>`).join("")}
+      <span><i class="lg desc-asig">☾</i> Descanso asignado en la rejilla (se guarda desde «Rejilla»)</span>
+      <span><i class="lg reasignar">!</i> No viene o descansa, pero tiene turno en la rejilla: hay que reasignarlo</span>
       <span><i class="lg editada"></i> Cambiada, sin guardar</span>
       <span><i class="lg aviso-finde"></i> Monitor de fin de semana en descanso</span>
     </div>`;
@@ -158,12 +171,18 @@ function dibujarTablaDisp() {
   DP.dias.forEach((d) => tr2.appendChild(elemento(`<th class="sin"><span class="cuenta-dia" data-dia="${d}"></span></th>`)));
   thead.appendChild(tr2);
 
+  const tr3 = elemento(`<tr class="fila-sin fila-desc"></tr>`);
+  tr3.appendChild(elemento(`<th class="etq" title="Monitores con descanso asignado en la rejilla">Descansan <small>asignados</small></th>`));
+  DP.dias.forEach((d) => tr3.appendChild(elemento(`<th class="sin"><span class="cuenta-desc" data-dia="${d}"></span></th>`)));
+  thead.appendChild(tr3);
+
   DP.filas.forEach((f, i) => {
     const tr = document.createElement("tr");
     tr.className = "fila disp-fila";
     const etq = elemento(`<td class="etq sub disp-nombre" title="Clic: pintar toda la fila de ${esc(f.nombre)}">
       <span class="acampado">${esc(f.nombre)}</span>${insigniaSexo(f.meta.sexo)}
-      ${f.meta.descansa === false ? `<span class="sel-tag" title="Monitor de fin de semana: prefiere no descansar">finde</span>` : ""}</td>`);
+      ${f.meta.descansa === false ? `<span class="sel-tag" title="Monitor de fin de semana: prefiere no descansar">finde</span>` : ""}
+      ${f.desc.size ? `<span class="n-desc" title="Días de descanso asignados en la rejilla: ${[...f.desc].sort((a, b) => a - b).join(", ")}">☾ ${f.desc.size}</span>` : ""}</td>`);
     etq.addEventListener("click", () => pintarFila(i));
     tr.appendChild(etq);
     DP.dias.forEach((d, k) => {
@@ -255,6 +274,10 @@ function pintarCeldaDisp(i, dia) {
   const cls = ["dcell", `d-${v}`];
   const info = DP.diasInfo.find((x) => x.dia === dia);
   if (info && info.finde) cls.push("finde");
+  const descansa = f.desc.has(dia);
+  if (descansa) cls.push("desc-asig");
+  const puesto = puestoPorReasignar(i, dia);
+  if (puesto) cls.push("reasignar");
   if (v !== DP.orig.get(claveDisp(i, dia))) cls.push("editada");
   let titulo = `${f.nombre} · día ${dia} · ${PINCELES[v].texto}`;
   if (v === "R" && f.meta.descansa === false) {
@@ -262,8 +285,28 @@ function pintarCeldaDisp(i, dia) {
     titulo += " — ⚠ monitor de fin de semana: el descanso impuesto contradice que prefiera no descansar (el generador lo rechazará)";
   }
   td.className = cls.join(" ");
+  if (descansa) titulo += " — descansa según la rejilla" + (v === "X" ? " (pero figura como «No viene»)" : "");
+  if (puesto) titulo += ` — ⚠ tiene asignado «${puesto}» en la rejilla: hay que reasignarlo`;
   td.title = titulo;
-  td.textContent = v === "D" ? "" : PINCELES[v].icono;
+  td.textContent = v === "D" ? (descansa ? "☾" : "") : PINCELES[v].icono;
+  if (puesto) td.textContent += "!";
+}
+
+// Si el monitor no viene (X) o tiene descanso impuesto (R) pero la rejilla le da turno o dependiente ese día,
+// devuelve el puesto que hay que reasignar.
+function puestoPorReasignar(i, dia) {
+  const v = valDisp(i, dia);
+  if (v === "D") return "";
+  return (DP.asig[DP.filas[i].nombre] || {})[String(dia)] || "";
+}
+
+function puestosPorReasignar() {
+  const lista = [];
+  DP.filas.forEach((f, i) => DP.dias.forEach((d) => {
+    const puesto = puestoPorReasignar(i, d);
+    if (puesto) lista.push({ i, nombre: f.nombre, dia: d, puesto });
+  }));
+  return lista;
 }
 
 function actualizarCuentas() {
@@ -275,6 +318,14 @@ function actualizarCuentas() {
     el.className = "cuenta-dia" + (n < DP.filas.length ? " menos" : "");
     el.title = `${n} de ${DP.filas.length} monitores vienen el día ${d}`;
   });
+  DP.dias.forEach((d) => {
+    const el = DP.el.cont.querySelector(`.cuenta-desc[data-dia="${d}"]`);
+    if (!el) return;
+    const n = DP.filas.filter((f) => f.desc.has(d)).length;
+    el.textContent = n || "·";
+    el.className = "cuenta-desc" + (n ? " hay" : "");
+    el.title = `${n} monitor(es) con descanso asignado el día ${d}`;
+  });
   const n = celdasCambiadas();
   const est = DP.el.cont.querySelector("#disp-estado");
   if (est) {
@@ -285,9 +336,18 @@ function actualizarCuentas() {
     DP.el.cont.querySelector("#disp-deshacer").disabled = DP.deshacer.length === 0;
   }
   // Aviso: descanso impuesto a monitores de fin de semana (el generador lo rechaza)
+  DP.el.avisos.innerHTML = "";
+  const huecos = puestosPorReasignar();
+  if (huecos.length) {
+    const ej = huecos.slice(0, 3).map((h) => `${h.nombre} (día ${h.dia}: ${h.puesto})`).join(", ");
+    DP.el.avisos.appendChild(alerta(
+      `${huecos.length} puesto${huecos.length === 1 ? "" : "s"} por reasignar en la Rejilla: ${esc(ej)}${huecos.length > 3 ? "…" : ""}. ` +
+      `No vienen o descansan, pero siguen con turno.`,
+      "error",
+      { texto: "Ver afectados", accion: () => { DP.ver = "reasignar"; DP.el.cont.querySelector("#disp-ver").value = "reasignar"; filtrarDisp(); } }));
+  }
   const malos = [];
   DP.filas.forEach((f, i) => { if (f.meta.descansa === false && DP.dias.some((d) => valDisp(i, d) === "R")) malos.push(f.nombre); });
-  DP.el.avisos.innerHTML = "";
   if (malos.length) {
     DP.el.avisos.appendChild(alerta(
       `${malos.length} monitor(es) de fin de semana tienen «Descanso impuesto» (${malos.slice(0, 4).join(", ")}${malos.length > 4 ? "…" : ""}). ` +
@@ -309,6 +369,8 @@ function filtrarDisp() {
     let ok = !q || norm(f.nombre).includes(q);
     if (ok && DP.grupo) ok = f.meta.grupo === DP.grupo;
     if (ok && DP.ver === "ausencias") ok = DP.dias.some((d) => valDisp(i, d) !== "D");
+    if (ok && DP.ver === "descansos") ok = f.desc.size > 0;
+    if (ok && DP.ver === "reasignar") ok = DP.dias.some((d) => puestoPorReasignar(i, d));
     if (ok && DP.ver === "cambios") ok = cambiadas.has(i);
     DP.trs[i].hidden = !ok;
     if (ok) visibles += 1;

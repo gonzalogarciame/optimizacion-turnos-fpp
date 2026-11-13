@@ -401,15 +401,31 @@ table.disp { user-select: none; }
 .tablero td.dcell.editada { box-shadow: inset 0 0 0 2px var(--acento); }
 .tablero td.dcell.editada::after { content: none; }
 .tablero td.dcell.aviso-finde { box-shadow: inset 0 0 0 2px #f79009; }
-.tablero .disp th.dia { min-width: 52px; max-width: 52px; width: 52px; }
-.tablero .disp th.dia b { font-size: 15px; }
-.tablero .disp .etq { min-width: 230px; max-width: 230px; }
+.tablero.disp th.dia { min-width: 64px; max-width: 64px; width: 64px; }
+.tablero.disp th.dia b { font-size: 15px; }
+.tablero.disp .etq { min-width: 270px; max-width: 270px; }
+.tablero.disp td.disp-nombre { white-space: nowrap; }
+.tablero.disp .disp-nombre .acampado { display: inline-block; max-width: 158px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .tablero td.disp-nombre { cursor: pointer; }
 .tablero td.disp-nombre:hover { background: var(--acento-claro); }
 .cuenta-dia { font-size: 12px; font-weight: 700; color: var(--verde); }
 .cuenta-dia.menos { color: #93370d; }
+.tablero thead tr.fila-desc th { top: 86px; }
+.tablero.disp tr.fila-desc th.sin { background: #f5f3ff; }
+.cuenta-desc { font-size: 12px; font-weight: 700; color: #a8a4cf; }
+.cuenta-desc.hay { color: var(--acento-osc); }
+/* descanso asignado en la rejilla */
+.tablero td.dcell.desc-asig { background: #e0e7ff; color: var(--acento-osc); font-weight: 700; }
+.tablero td.dcell.desc-asig.d-R, .tablero td.dcell.desc-asig.d-X { box-shadow: inset 0 0 0 2px #818cf8; }
+.tablero td.dcell.desc-asig.editada { box-shadow: inset 0 0 0 2px var(--acento); }
+.n-desc { margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--acento-osc); background: #e0e7ff; border-radius: 9px; padding: 1px 6px; white-space: nowrap; }
+.lg.desc-asig { background: #e0e7ff; border-color: #a5b4fc; color: var(--acento-osc); font-size: 10px; line-height: 11px; text-align: center; font-style: normal; font-weight: 700; }
 
 @media (max-width: 980px) {
   .resumen-texto { display: none; }
   .barra-grupo.derecha { margin-left: 0; }
 }
+
+/* ausente o descanso impuesto con turno en la rejilla: hay que reasignarlo */
+.tablero td.dcell.reasignar { box-shadow: inset 0 0 0 2px #f04438; font-weight: 800; color: #b42318; }
+.lg.reasignar { background: #fee4e2; border-color: #f04438; color: #b42318; font-size: 10px; line-height: 11px; text-align: center; font-style: normal; font-weight: 800; }

@@ -201,7 +201,9 @@ function pintarCelda(key) {
     if (c.u || !m) { cls.push("desconocido"); avisos.push("Nombre no reconocido: vacía la casilla o elige otro monitor"); }
     else {
       if (REJ.conflictos.has(key)) { cls.push("conflicto"); avisos.push("Este monitor está en más de un sitio ese día"); }
-      if ((REJ.disp[c.v] || {})[String(dia)] === "X") { cls.push("aviso-ausente"); avisos.push("Figura como ausente ese día"); }
+      const estado = (REJ.disp[c.v] || {})[String(dia)];
+      if (estado === "X") { cls.push("aviso-ausente"); avisos.push("Figura como ausente ese día"); }
+      else if (estado === "R" && tipo !== "descanso") { cls.push("aviso-ausente"); avisos.push("Tiene descanso impuesto ese día: hay que reasignar este puesto"); }
       if (tipo === "descanso" && m.descansa === false) { cls.push("aviso-finde"); avisos.push("Monitor de fin de semana: prefiere no descansar"); }
       const req = tipo === "dependiente" ? info.fila.sexo_req : sec.sexo_req;
       if (req && req !== "-" && m.sexo !== req) { cls.push("aviso-sexo"); avisos.push(`Este puesto requiere sexo ${req}`); }
