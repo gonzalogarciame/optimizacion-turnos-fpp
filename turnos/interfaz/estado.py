@@ -34,7 +34,7 @@ def inicializar_estado() -> None:
 def cargar(ruta: str, desde: Optional[int] = None) -> bool:
     try:
         datos = leer_datos(ruta, desde=desde)
-    except (ErrorLecturaExcel, ErrorNombreNoReconocido, ValueError) as exc:
+    except (ErrorLecturaExcel, ErrorNombreNoReconocido, ValueError, OSError) as exc:
         st.session_state["error_carga"] = str(exc)
         st.session_state["datos"] = None
         return False

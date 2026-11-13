@@ -28,11 +28,22 @@ import streamlit as st
 
 from turnos.interfaz import estado
 from turnos.interfaz.editor_datos import (
+    agregar_dependiente,
     agregar_fijacion,
+    agregar_tipo_turno,
+    guardar_config_valores,
+    guardar_dependientes_df,
     guardar_disponibilidad_df,
     guardar_monitores_df,
+    guardar_plazas_por_dia_df,
+    guardar_restricciones_df,
+    guardar_tipos_turno_df,
+    leer_dependientes_df,
     leer_disponibilidad_df,
     leer_monitores_df,
+    leer_plazas_por_dia_df,
+    leer_restricciones_df,
+    leer_tipos_turno_df,
 )
 from turnos.io_excel.escritor import escribir_solucion
 from turnos.modelo.construir import ErrorModeloInconsistente, construir_modelo
@@ -73,7 +84,11 @@ def _barra_lateral():
                     st.write("- " + a)
 
     return st.sidebar.radio(
-        "Pantalla", ["Rejilla", "Monitores", "Disponibilidad", "Optimizar", "Informe"]
+        "Pantalla",
+        [
+            "Rejilla", "Monitores", "Disponibilidad", "Turnos y dependientes",
+            "Restricciones", "Optimizar", "Informe",
+        ],
     )
 
 
@@ -231,6 +246,208 @@ def pagina_disponibilidad():
 
 
 # ---------------------------------------------------------------------
+# Turnos y dependientes
+# ---------------------------------------------------------------------
+def pagina_turnos_dependientes():
+    st.header("Turnos y dependientes")
+    datos = estado.datos_actuales()
+    if not datos:
+        st.info("Carga un Excel desde la barra lateral.")
+        return
+    ruta = st.session_state["ruta_excel"]
+
+    st.subheader("Turnos existentes")
+    st.caption(
+        "PLAZAS es el valor por defecto; el reparto día a día se ajusta abajo, en "
+        "'Plazas por día'. No se puede renombrar ni borrar un turno desde aquí "
+        "(el nombre se usa tal cual en FIJACIONES y en la rejilla)."
+    )
+    df_turnos = leer_tipos_turno_df(ruta)
+    editado_turnos = st.data_editor(
+        df_turnos,
+        num_rows="fixed",
+        disabled=["TURNO"],
+        column_config={
+            "SEXO_REQ": st.column_config.SelectboxColumn(options=["-", "M", "F"]),
+        },
+        hide_index=True,
+        width="stretch",
+        key="editor_tipos_turno",
+    )
+    if st.button("Guardar turnos"):
+        guardar_tipos_turno_df(ruta, editado_turnos)
+        st.success("Turnos guardados.")
+        estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+        st.rerun()
+
+    st.subheader("Plazas por día")
+    df_plazas = leer_plazas_por_dia_df(ruta, datos.dias)
+    editado_plazas = st.data_editor(
+        df_plazas,
+        num_rows="fixed",
+        disabled=["TURNO"],
+        hide_index=True,
+        width="stretch",
+        key="editor_plazas_por_dia",
+    )
+    if st.button("Guardar plazas por día"):
+        guardar_plazas_por_dia_df(ruta, editado_plazas, datos.dias)
+        st.success("Plazas por día guardadas.")
+        estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+        st.rerun()
+
+    st.subheader("Añadir turno nuevo")
+    st.caption(
+        "Reserva plazas nuevas en la rejilla de TURNOS. Los días anteriores al "
+        "de re-optimización se dejan con 0 plazas (el turno no existía entonces)."
+    )
+    with st.form("form_nuevo_turno"):
+        nombre = st.text_input("Nombre del turno")
+        plazas = st.number_input("Plazas", min_value=1, value=1, step=1)
+        sexo_req = st.selectbox("Sexo requerido", ["-", "M", "F"])
+        esfuerzo = st.number_input("Esfuerzo", min_value=0.0, value=2.0, step=0.5)
+        if st.form_submit_button("Añadir turno"):
+            try:
+                agregar_tipo_turno(
+                    ruta, nombre, int(plazas), sexo_req, float(esfuerzo),
+                    datos.dias, datos.cfg.dia_reoptimizacion,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Turno '{nombre}' añadido.")
+                estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+                st.rerun()
+
+    st.divider()
+    st.subheader("Dependientes existentes")
+    st.caption(
+        "ESFUERZO debe ser mayor que el de cualquier turno normal. No se puede "
+        "renombrar ni borrar un dependiente desde aquí (el nombre se usa tal cual "
+        "en ASIG_DEPENDIENTE y en la rejilla)."
+    )
+    df_dep = leer_dependientes_df(ruta)
+    editado_dep = st.data_editor(
+        df_dep,
+        num_rows="fixed",
+        disabled=["ACAMPADO"],
+        column_config={
+            "SEXO_MONITOR_REQ": st.column_config.SelectboxColumn(options=["-", "M", "F"]),
+        },
+        hide_index=True,
+        width="stretch",
+        key="editor_dependientes",
+    )
+    if st.button("Guardar dependientes"):
+        guardar_dependientes_df(ruta, editado_dep)
+        st.success("Dependientes guardados.")
+        estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+        st.rerun()
+
+    st.subheader("Añadir dependiente nuevo")
+    st.caption(
+        "Los días anteriores al de re-optimización quedan marcados '-' (no "
+        "presente): si en realidad ya estaba, rellena esas celdas a mano en "
+        "ASIG_DEPENDIENTE con quién le cuidó. Los días futuros los decide el modelo."
+    )
+    with st.form("form_nuevo_dependiente"):
+        acampado = st.text_input("Nombre del acampado")
+        sexo_req = st.selectbox("Sexo del monitor requerido", ["-", "M", "F"], key="sexo_dep_nuevo")
+        esfuerzo = st.number_input("Esfuerzo", min_value=0.0, value=4.0, step=0.5, key="esfuerzo_dep_nuevo")
+        if st.form_submit_button("Añadir dependiente"):
+            try:
+                agregar_dependiente(
+                    ruta, acampado, sexo_req, float(esfuerzo),
+                    datos.dias, datos.cfg.dia_reoptimizacion,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Dependiente '{acampado}' añadido.")
+                estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+                st.rerun()
+
+
+# ---------------------------------------------------------------------
+# Restricciones
+# ---------------------------------------------------------------------
+def pagina_restricciones():
+    st.header("Restricciones y parámetros")
+    datos = estado.datos_actuales()
+    if not datos:
+        st.info("Carga un Excel desde la barra lateral.")
+        return
+    ruta = st.session_state["ruta_excel"]
+
+    st.caption(
+        "ACTIVA enciende o apaga la regla de verdad. TIPO (DURA/BLANDA) es solo "
+        "informativo: lo que hace que una regla sea dura o blanda es su propio "
+        "código, no esta celda. No se pueden dar de alta restricciones nuevas "
+        "desde aquí: necesitan código detrás."
+    )
+    df_restr = leer_restricciones_df(ruta)
+    editado_restr = st.data_editor(
+        df_restr,
+        num_rows="fixed",
+        disabled=["NOMBRE", "DESCRIPCION"],
+        column_config={
+            "ACTIVA": st.column_config.CheckboxColumn(),
+            "TIPO": st.column_config.SelectboxColumn(options=["DURA", "BLANDA"]),
+        },
+        hide_index=True,
+        width="stretch",
+        key="editor_restricciones",
+    )
+    if st.button("Guardar restricciones"):
+        guardar_restricciones_df(ruta, editado_restr)
+        st.success("Restricciones guardadas.")
+        estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+        st.rerun()
+
+    st.subheader("Parámetros y pesos del objetivo")
+    cfg = datos.cfg
+    with st.form("form_config"):
+        col1, col2 = st.columns(2)
+        with col1:
+            solver = st.selectbox(
+                "SOLVER", ["appsi_highs", "gurobi"],
+                index=0 if "highs" in cfg.solver else 1,
+                help="appsi_highs es gratis, local y no necesita licencia ni internet.",
+            )
+            time_limit_s = st.number_input("TIME_LIMIT_S", min_value=1.0, value=float(cfg.time_limit_s))
+            mip_gap = st.number_input("MIP_GAP", min_value=0.0, value=float(cfg.mip_gap), step=0.01, format="%.4f")
+            dias_descanso_minimo = st.number_input("DIAS_DESCANSO_MINIMO", min_value=0, value=int(cfg.dias_descanso_minimo))
+            dias_ventana_descanso = st.number_input("DIAS_VENTANA_DESCANSO", min_value=1, value=int(cfg.dias_ventana_descanso))
+            max_dias_por_dep = st.number_input("MAX_DIAS_POR_DEP", min_value=1, value=int(cfg.max_dias_por_dep))
+        with col2:
+            w_falta = st.number_input("W_FALTA", min_value=0.0, value=float(cfg.w_falta))
+            w_equidad = st.number_input("W_EQUIDAD", min_value=0.0, value=float(cfg.w_equidad))
+            w_descanso_lim = st.number_input("W_DESCANSO_LIM", min_value=0.0, value=float(cfg.w_descanso_lim))
+            w_variedad = st.number_input("W_VARIEDAD", min_value=0.0, value=float(cfg.w_variedad))
+            w_repeticion = st.number_input("W_REPETICION", min_value=0.0, value=float(cfg.w_repeticion))
+            w_falta_desc = st.number_input("W_FALTA_DESC", min_value=0.0, value=float(cfg.w_falta_desc))
+
+        if st.form_submit_button("Guardar parámetros"):
+            guardar_config_valores(ruta, {
+                "SOLVER": solver,
+                "TIME_LIMIT_S": time_limit_s,
+                "MIP_GAP": mip_gap,
+                "DIAS_DESCANSO_MINIMO": dias_descanso_minimo,
+                "DIAS_VENTANA_DESCANSO": dias_ventana_descanso,
+                "MAX_DIAS_POR_DEP": max_dias_por_dep,
+                "W_FALTA": w_falta,
+                "W_EQUIDAD": w_equidad,
+                "W_DESCANSO_LIM": w_descanso_lim,
+                "W_VARIEDAD": w_variedad,
+                "W_REPETICION": w_repeticion,
+                "W_FALTA_DESC": w_falta_desc,
+            })
+            st.success("Parámetros guardados.")
+            estado.cargar(ruta, desde=datos.cfg.dia_reoptimizacion)
+            st.rerun()
+
+
+# ---------------------------------------------------------------------
 # 4. Optimizar
 # ---------------------------------------------------------------------
 def pagina_optimizar():
@@ -384,6 +601,8 @@ def main():
         "Rejilla": pagina_rejilla,
         "Monitores": pagina_monitores,
         "Disponibilidad": pagina_disponibilidad,
+        "Turnos y dependientes": pagina_turnos_dependientes,
+        "Restricciones": pagina_restricciones,
         "Optimizar": pagina_optimizar,
         "Informe": pagina_informe,
     }[pagina]()
