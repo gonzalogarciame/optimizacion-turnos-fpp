@@ -9,6 +9,7 @@ intacto.
 """
 from __future__ import annotations
 
+import copy
 import re
 import shutil
 from datetime import datetime
@@ -19,6 +20,7 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 from ..modelo.datos import NO_PRESENTE, POR_DECIDIR, Datos, Solucion
+from .estructura import asegurar_filas_turnos, filas_necesarias_por_solucion
 
 AMARILLO = PatternFill(start_color="FFFFE599", end_color="FFFFE599", fill_type="solid")
 GRIS_CLARO = PatternFill(start_color="FFD9D9D9", end_color="FFD9D9D9", fill_type="solid")
@@ -68,13 +70,19 @@ def escribir_solucion(
     wb = openpyxl.load_workbook(ruta_entrada, data_only=False)
     ws = wb["TURNOS"]
 
+    # Si algún turno recibe más gente que filas tiene su bloque (turnos que aceptan
+    # extras, ver PLAZAS_MAX_POR_DIA) se amplía la rejilla. Eso cambia las filas de
+    # `datos`, así que se trabaja sobre una copia: quien llama puede reutilizar el suyo.
+    datos = copy.deepcopy(datos)
+    asegurar_filas_turnos(wb, datos, filas_necesarias_por_solucion(solucion))
+
     dia_reopt = datos.cfg.dia_reoptimizacion
     mapa_dias = _mapa_dias_por_columna(ws, 1, 2, ws.max_column)
 
     fijado_obliga = {(f.monitor, f.turno, f.dia) for f in datos.fijaciones if f.tipo == "OBLIGA"}
 
     _escribir_bloques_trabajo(ws, datos, solucion, mapa_dias, dia_reopt, fijado_obliga)
-    _escribir_dependientes(ws, datos, mapa_dias, dia_reopt)
+    _escribir_dependientes(ws, datos, solucion, mapa_dias, dia_reopt)
     _regenerar_descanso(ws, datos, solucion, mapa_dias, dia_reopt)
 
     if dry_run and misma_ruta:
@@ -123,7 +131,10 @@ def _escribir_bloques_trabajo(ws, datos: Datos, solucion: Solucion, mapa_dias, d
                 ws.cell(filas[-1], col).value = (ws.cell(filas[-1], col).value or "") + f" (+{extra})"
 
 
-def _escribir_dependientes(ws, datos: Datos, mapa_dias, dia_reopt):
+def _escribir_dependientes(ws, datos: Datos, solucion: Solucion, mapa_dias, dia_reopt):
+    # Monitor que el modelo asigna a cada (acampado, día) cuando la celda de
+    # ASIG_DEPENDIENTE estaba vacía ("que lo decida el modelo").
+    decidido = {(p, d): mo for (mo, p, d), v in solucion.y.items() if v == 1}
     for p, dep in datos.dependientes.items():
         fila = dep.fila
         for dia in datos.dias:
@@ -137,7 +148,7 @@ def _escribir_dependientes(ws, datos: Datos, mapa_dias, dia_reopt):
                 celda.value = "-"
                 celda.fill = SIN_RELLENO
             elif valor == POR_DECIDIR:
-                celda.value = None
+                celda.value = decidido.get((p, dia))
                 celda.fill = SIN_RELLENO
             else:
                 celda.value = valor
