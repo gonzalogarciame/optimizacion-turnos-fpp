@@ -251,21 +251,7 @@ async function refrescarResumen() {
 }
 
 function configurarBarraSuperior() {
-  document.getElementById("btn-cargar").addEventListener("click", async () => {
-    if (!confirmarSalida()) return;
-    const ruta = document.getElementById("input-ruta").value;
-    const estadoSpan = document.getElementById("estado-carga");
-    estadoSpan.textContent = "Cargando…";
-    try {
-      await api("POST", "/api/cargar", { ruta });
-      estadoSpan.textContent = "";
-      await refrescarResumen();
-      await dibujarPagina();
-    } catch (e) {
-      estadoSpan.textContent = "";
-      insertarBanner(document.getElementById("avisos-excel"), "error", e.message);
-    }
-  });
+  configurarMenuCampamento();  // campamentos.js
 }
 
 // ---------------------------------------------------------------------
@@ -278,6 +264,7 @@ const PAGINAS = {
   turnos: { titulo: "Turnos y dependientes", render: renderTurnosDependientes },
   restricciones: { titulo: "Restricciones", render: renderRestricciones },
   informe: { titulo: "Informe", render: renderInforme },
+  versiones: { titulo: "Versiones", render: renderVersiones },
 };
 let paginaActual = "rejilla";
 

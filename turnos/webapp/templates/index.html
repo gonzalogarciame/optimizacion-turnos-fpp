@@ -19,17 +19,27 @@
       <button class="nav-btn" data-pagina="turnos">Turnos y dependientes</button>
       <button class="nav-btn" data-pagina="restricciones">Restricciones</button>
       <button class="nav-btn" data-pagina="informe">Informe</button>
+      <button class="nav-btn" data-pagina="versiones">Versiones</button>
     </nav>
     <div class="cabecera-der">
       <div id="resumen-excel" class="resumen-texto"></div>
       <details id="carga-excel" class="menu-excel">
         <summary>Campamento</summary>
         <div class="menu-excel-cuerpo">
-          <label>Base de datos del campamento (.db), o un Excel para importarlo
-            <input type="text" id="input-ruta">
+          <label>Campamento abierto
+            <select id="sel-campamento"></select>
           </label>
-          <button id="btn-cargar">Cargar / recargar</button>
-          <a class="enlace-boton" href="/api/descargar" title="Descargar una copia en formato Excel">Descargar Excel</a>
+          <div class="menu-botones">
+            <button id="btn-nuevo-camp" type="button">Nuevo campamento…</button>
+            <button id="btn-importar" type="button" class="secundario">Importar un Excel…</button>
+            <a class="enlace-boton" href="/api/descargar" title="Descargar una copia en formato Excel">Descargar Excel</a>
+          </div>
+          <input type="file" id="fichero-excel" accept=".xlsx,.xlsm" hidden>
+          <details class="avanzado">
+            <summary>Abrir por ruta</summary>
+            <input type="text" id="input-ruta">
+            <button id="btn-cargar" type="button" class="secundario">Cargar / recargar</button>
+          </details>
           <span id="estado-carga"></span>
         </div>
       </details>
@@ -42,6 +52,7 @@
   <script src="/static/rejilla.js"></script>
   <script src="/static/herramientas.js"></script>
   <script src="/static/disponibilidad.js"></script>
+  <script src="/static/campamentos.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -7,7 +7,9 @@ negocio propia, solo serializa `Datos`/`DataFrame` a JSON y de vuelta.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import io
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -23,7 +25,7 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from . import estado
 from ..almacen.cargar import leer_datos_db
-from ..almacen.copias import hacer_copia_seguridad
+from ..almacen.copias import hacer_copia_seguridad, listar_copias, restaurar_copia
 from ..almacen.edicion import (
     agregar_dependiente,
     agregar_tipo_turno,
@@ -44,6 +46,8 @@ from ..almacen.edicion import (
 )
 from ..almacen.exportar import exportar_excel
 from ..almacen.guardar import escribir_solucion_db
+from ..almacen.importar import importar_excel
+from ..almacen.nuevo import CARPETA_DATOS, crear_campamento, listar_campamentos
 from ..almacen.rejilla import (
     ErrorEdicionRejilla,
     asignaciones_trabajo_db,
@@ -758,6 +762,107 @@ def crear_app() -> Flask:
             "dias_dependiente_acampado": _serie(dias_dep_acampado, 0),
             "falta": _serie(falta),
         })
+
+    # ------------------------------------------------------------------
+    # Campamentos: listar, crear uno nuevo, importar un Excel
+    # ------------------------------------------------------------------
+    @app.get("/api/campamentos")
+    def api_campamentos():
+        return jsonify({"actual": estado.ruta_actual(), "campamentos": listar_campamentos()})
+
+    @app.post("/api/campamentos/nuevo")
+    def api_campamento_nuevo():
+        if _con_datos() is None:
+            return _error("No hay ningún campamento cargado del que partir")
+        if _generando():
+            return _error("Hay una generación en curso: espera a que termine.", 409)
+        c = request.get_json(force=True) or {}
+        try:
+            nueva = crear_campamento(
+                estado.ruta_actual(), int(c["quincena"]), int(c["anio"]), int(c["mes"]),
+                int(c["dia_inicio"]), int(c["dia_fin"]), bool(c.get("copiar_disponibilidad")),
+            )
+        except (KeyError, TypeError):
+            return _error("Faltan datos del campamento nuevo")
+        except (ValueError, ErrorDatos) as exc:
+            return _error(str(exc))
+        estado.cargar(nueva)
+        return api_estado()
+
+    @app.post("/api/campamentos/importar")
+    def api_campamento_importar():
+        archivo = request.files.get("archivo")
+        if archivo is None or not (archivo.filename or "").lower().endswith((".xlsx", ".xlsm")):
+            return _error("Elige un fichero de Excel (.xlsx)")
+        if _generando():
+            return _error("Hay una generación en curso: espera a que termine.", 409)
+        nombre = re.sub(r"[^\w\-]+", "_", Path(archivo.filename).stem).strip("_")[:60] or "importado"
+        carpeta, n = Path(CARPETA_DATOS) / nombre, 2
+        while (carpeta / "campamento.db").exists():
+            carpeta, n = Path(CARPETA_DATOS) / f"{nombre}-{n}", n + 1
+        directorio = tempfile.mkdtemp(prefix="turnos_importar_")
+        try:
+            temporal = str(Path(directorio) / "libro.xlsx")
+            archivo.save(temporal)
+            destino = (carpeta / "campamento.db").as_posix()
+            carpeta.mkdir(parents=True, exist_ok=True)
+            try:
+                importar_excel(temporal, destino)
+            except Exception as exc:  # un Excel roto o con otra estructura puede fallar de muchas formas
+                shutil.rmtree(carpeta, ignore_errors=True)
+                return _error(f"No se ha podido importar el Excel: {exc}")
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+        estado.cargar(destino)
+        return api_estado()
+
+    # ------------------------------------------------------------------
+    # Versiones (copias de seguridad)
+    # ------------------------------------------------------------------
+    def _resumen_copia(ruta_copia: str) -> dict:
+        info = {"nombre": Path(ruta_copia).name,
+                "fecha": _dt.datetime.fromtimestamp(Path(ruta_copia).stat().st_mtime).isoformat(timespec="seconds"),
+                "asignaciones": None, "dia_reoptimizacion": None}
+        try:
+            con = sqlite3.connect(f"file:{Path(ruta_copia).as_posix()}?mode=ro", uri=True)
+            try:
+                info["asignaciones"] = con.execute("SELECT COUNT(*) FROM asignaciones").fetchone()[0]
+                fila = con.execute("SELECT valor FROM config WHERE clave = 'DIA_REOPTIMIZACION'").fetchone()
+                info["dia_reoptimizacion"] = int(fila[0]) if fila else None
+            finally:
+                con.close()
+        except (sqlite3.Error, ValueError):
+            pass
+        return info
+
+    @app.get("/api/copias")
+    def api_copias():
+        ctx = _con_datos()
+        if ctx is None:
+            return _error("No hay ningún campamento cargado")
+        return jsonify([_resumen_copia(c) for c in reversed(listar_copias(ctx[1]))])
+
+    @app.post("/api/copias/crear")
+    def api_copias_crear():
+        ctx = _con_datos()
+        if ctx is None:
+            return _error("No hay ningún campamento cargado")
+        return jsonify(_resumen_copia(hacer_copia_seguridad(ctx[1])))
+
+    @app.post("/api/copias/restaurar")
+    def api_copias_restaurar():
+        ctx = _con_datos()
+        if ctx is None:
+            return _error("No hay ningún campamento cargado")
+        if _generando():
+            return _error("Hay una generación en curso: espera a que termine.", 409)
+        nombre = (request.get_json(force=True) or {}).get("nombre")
+        copia = next((c for c in listar_copias(ctx[1]) if Path(c).name == nombre), None)  # solo copias de este campamento
+        if copia is None:
+            return _error("Esa versión ya no existe")
+        previa = restaurar_copia(ctx[1], copia)
+        estado.cargar(ctx[1])
+        return jsonify({"ok": True, "version_previa": Path(previa).name})
 
     return app
 

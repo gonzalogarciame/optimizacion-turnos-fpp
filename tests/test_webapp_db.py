@@ -209,3 +209,90 @@ def test_descargar_excel_se_genera_desde_la_base_de_datos(cliente, tmp_path):
     destino = tmp_path / "descargado.xlsx"
     destino.write_bytes(r.data)
     assert len(leer_datos(str(destino)).monitores) > 0
+
+
+# ----------------------------------------------------------------------
+# Campamentos nuevos, importar un Excel y versiones
+# ----------------------------------------------------------------------
+@pytest.fixture
+def raiz(tmp_path, monkeypatch):
+    """Que 'datos/' sea una carpeta de pruebas, no la real."""
+    carpeta = tmp_path / "datos"
+    carpeta.mkdir()
+    monkeypatch.setattr("turnos.almacen.nuevo.CARPETA_DATOS", str(carpeta))
+    monkeypatch.setattr("turnos.webapp.server.CARPETA_DATOS", str(carpeta))
+    monkeypatch.chdir(tmp_path)
+    return carpeta
+
+
+def test_nuevo_campamento_parte_de_otro_y_esta_vacio(cliente, raiz):
+    c, db = cliente
+    antes = c.get("/api/estado").get_json()
+    r = _post(c, "/api/campamentos/nuevo", {"quincena": 1, "anio": 2027, "mes": 8, "dia_inicio": 1, "dia_fin": 14, "copiar_disponibilidad": False})
+    assert r.status_code == 200, r.get_json()
+    nuevo = r.get_json()
+    assert nuevo["dia_inicio"] == 1 and nuevo["dia_fin"] == 14 and len(nuevo["dias"]) == 14
+    assert nuevo["n_monitores"] == antes["n_monitores"] and nuevo["n_dependientes"] == antes["n_dependientes"]
+    assert nuevo["ruta"] != antes["ruta"] and Path(nuevo["ruta"]).exists()
+    rej = c.get("/api/rejilla").get_json()
+    assert not any(cel["v"] and cel["v"] != "-" for s in rej["secciones"] for f in s["filas"] for cel in f["celdas"].values())
+    # llegada y salida conservan sus plazas propias; todos disponibles
+    p = c.get("/api/plazas").get_json()
+    assert len(p["dias"]) == 14
+    disp = c.get("/api/disponibilidad").get_json()["filas"]
+    assert all(v == "D" for f in disp for k, v in f.items() if k != "NOMBRE")
+    # el nuevo aparece en la lista y el anterior no se ha tocado
+    lista = c.get("/api/campamentos").get_json()
+    assert any(x["ruta"] == nuevo["ruta"] for x in lista["campamentos"])
+    # no se puede repetir
+    assert _post(c, "/api/campamentos/nuevo", {"quincena": 1, "anio": 2027, "mes": 8, "dia_inicio": 1, "dia_fin": 14}).status_code == 400
+
+
+def test_nuevo_campamento_valida_las_fechas(cliente, raiz):
+    c, db = cliente
+    for malo in ({"mes": 13}, {"dia_fin": 40}, {"dia_inicio": 10, "dia_fin": 5}, {"anio": 1900}):
+        cuerpo = {"quincena": 3, "anio": 2027, "mes": 8, "dia_inicio": 1, "dia_fin": 14, **malo}
+        assert _post(c, "/api/campamentos/nuevo", cuerpo).status_code == 400, malo
+    assert _post(c, "/api/campamentos/nuevo", {"quincena": 3}).status_code == 400
+    assert not list(raiz.glob("**/*.db")), "un intento fallido no deja nada a medias"
+
+
+def test_importar_un_excel_subiendolo(cliente, raiz):
+    import io as _io
+    c, db = cliente
+    r = c.post("/api/campamentos/importar", data={"archivo": (_io.BytesIO(FIXTURE.read_bytes()), "Mi Campamento.xlsx")},
+               content_type="multipart/form-data")
+    assert r.status_code == 200, r.get_json()
+    assert "Mi_Campamento" in r.get_json()["ruta"] and r.get_json()["n_monitores"] > 0
+    # subir el mismo no pisa el anterior
+    r2 = c.post("/api/campamentos/importar", data={"archivo": (_io.BytesIO(FIXTURE.read_bytes()), "Mi Campamento.xlsx")},
+                content_type="multipart/form-data")
+    assert r2.status_code == 200 and r2.get_json()["ruta"] != r.get_json()["ruta"]
+    # algo que no es un Excel se rechaza sin dejar rastro
+    n = len(list(raiz.glob("**/*.db")))
+    mal = c.post("/api/campamentos/importar", data={"archivo": (_io.BytesIO(b"no soy un excel"), "roto.xlsx")}, content_type="multipart/form-data")
+    assert mal.status_code == 400 and len(list(raiz.glob("**/*.db"))) == n
+    assert c.post("/api/campamentos/importar", data={"archivo": (_io.BytesIO(b"x"), "notas.txt")}, content_type="multipart/form-data").status_code == 400
+
+
+def test_versiones_guardar_y_restaurar(cliente):
+    c, db = cliente
+    rej = c.get("/api/rejilla").get_json()
+    dia = rej["dia_fin"]
+    fila, _ = _celda(rej, "turno", "lavaplatos", dia, pos=0)
+    usados = {cel["v"] for s in rej["secciones"] for f in s["filas"] for k, cel in f["celdas"].items() if k == str(dia)}
+    libre = next(m["nombre"] for m in rej["monitores"] if m["nombre"] not in usados)
+
+    version = c.post("/api/copias/crear", json={}).get_json()
+    assert version["nombre"].endswith(".db") and version["asignaciones"] is not None
+    _post(c, "/api/rejilla/guardar", {"cambios": [{"tipo": "turno", "fila": fila, "dia": dia, "valor": libre, "fijado": True}]})
+    assert _celda(c.get("/api/rejilla").get_json(), "turno", "lavaplatos", dia, pos=0)[1]["v"] == libre
+
+    lista = c.get("/api/copias").get_json()
+    assert len(lista) >= 2 and lista[0]["fecha"] >= lista[-1]["fecha"]  # la más reciente primero
+    r = _post(c, "/api/copias/restaurar", {"nombre": version["nombre"]})
+    assert r.status_code == 200
+    assert _celda(c.get("/api/rejilla").get_json(), "turno", "lavaplatos", dia, pos=0)[1]["v"] == ""
+    # restaurar deja antes el estado actual como otra versión: se puede deshacer el deshacer
+    assert any(v["nombre"] == r.get_json()["version_previa"] for v in c.get("/api/copias").get_json())
+    assert _post(c, "/api/copias/restaurar", {"nombre": "../../otra.db"}).status_code == 400
