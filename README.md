@@ -13,7 +13,14 @@ turnos en la Fundación puede usarlo, mientras su Excel siga la misma
 estructura de hojas que se describe más abajo.
 
 - CLI: `python -m turnos validar|optimizar --excel datos/<campamento>/turnos.xlsx`
-- Interfaz visual: `streamlit run turnos/interfaz/app.py`
+- Interfaz visual (Streamlit): `streamlit run turnos/interfaz/app.py`
+- Interfaz web local (sin Streamlit): `python -m turnos.webapp`, luego abrir
+  `http://127.0.0.1:5000` en el navegador. Es una tabla turnos × días donde
+  se edita cada casilla con un selector de monitores, también en días ya
+  pasados, y desde la que se lanza el optimizador a partir de un día
+  concreto (ver §4.1). Todo el HTML/CSS/JS es estático (sin CDN ni
+  dependencias de red): funciona sin conexión a internet. Lee y escribe el
+  mismo Excel que las otras dos interfaces.
 
 ---
 
@@ -103,6 +110,47 @@ lanzar la optimización desde el navegador):
 streamlit run turnos/interfaz/app.py
 ```
 
+### 4.1 Interfaz web: la rejilla
+
+`python -m turnos.webapp` y abrir `http://127.0.0.1:5000` (desde la raíz del
+repo; usa el Excel indicado en `turnos/webapp/estado.py` o el que se escriba
+en la cabecera). La pantalla **Rejilla** es una tabla con los turnos en filas
+y los días en columnas, leída directamente de la hoja `TURNOS`:
+
+- **Editar una casilla:** clic (o teclear directamente sobre ella) y elegir
+  monitor en el buscador. Sirve el apodo de la hoja `ALIAS`. Si el monitor ya
+  tiene otro puesto ese día, se **intercambia** con el ocupante de la casilla.
+  `Supr` vacía, las flechas mueven, `Ctrl+Z` deshace. Los cambios son un
+  borrador hasta pulsar **Guardar** (que hace antes la copia de seguridad).
+- **Corregir días ya vividos:** todas las casillas son editables, también las
+  de días anteriores al de re-optimización. La fila «Sin puesto» cuenta, para
+  cada día, los monitores disponibles que no aparecen en ningún turno,
+  dependiente ni descanso; en un día congelado debe quedar a 0 o el generador
+  se negará a arrancar.
+- **Fijar:** una casilla escrita a mano en un día que se va a regenerar queda
+  *fijada* (amarillo): el optimizador la respeta. Se desmarca en el selector.
+- **Generar desde un día:** se elige el día (o se hace clic en su cabecera) y
+  se pulsa «Generar turnos». Todo lo anterior queda congelado. El resultado
+  aparece como **propuesta** (en verde lo que cambia) y no se escribe nada
+  hasta pulsar «Aplicar y guardar», que hace copia de seguridad y deja
+  `DIA_REOPTIMIZACION` de `CONFIG` en ese día (así la CLI también respeta lo
+  congelado). «Descartar» no toca el Excel.
+- **Plazas por día (🧩):** cuántas plazas hay que cubrir cada día en cada turno y
+  hasta cuántas personas *acepta* como máximo. Un turno con 0 necesarias «no
+  existe» ese día (llegada, salida). Se abre desde el botón de arriba, desde el
+  icono de la cabecera de un día o haciendo clic en el contador de un turno
+  (`3/3`). Permite copiar un día a otros y avisa de si hay sitio para los
+  monitores de fin de semana. Si un turno pasa a aceptar más gente de la que
+  cabe en su bloque, la rejilla **crece sola** (se insertan filas en `TURNOS`).
+- **Turnos para WhatsApp (📲):** texto con los turnos de un día (por defecto con
+  dependientes y sin descanso), con la opción «solo nombre de pila», listo para
+  copiar o abrir en WhatsApp. Refleja lo que se ve en pantalla, también una
+  propuesta aún sin aplicar.
+- Los monitores con `PERMITE_DESCANSO = 0` (fin de semana) llevan la etiqueta
+  `finde` en el selector y la pantalla avisa si alguno acaba en descanso.
+- Si el solver de `CONFIG` no funciona en el equipo (Gurobi sin licencia o con
+  la licencia caducada), el generador reintenta solo con HiGHS y lo avisa.
+
 ## 5. Estructura de datos: el Excel de un campamento
 
 Cada campamento se describe en un único libro Excel con estas hojas (las
@@ -115,6 +163,7 @@ demás hojas del libro son solo documentación y no las lee el sistema):
 | `DISPONIBILIDAD` | Matriz monitor × día. Cada celda: `D` disponible, `X` ausente (no participa ese día), `R` descanso impuesto por el usuario. |
 | `TIPOS_TURNO` | Los turnos de trabajo que existen (limpieza, cocina, comedor, vigilancia...), sus plazas por defecto, el sexo que requieren y su esfuerzo. |
 | `PLAZAS_POR_DIA` | Plazas necesarias de cada turno cada día (sobrescribe el valor por defecto de `TIPOS_TURNO`). |
+| `PLAZAS_MAX_POR_DIA` | *Opcional.* Máximo de personas que acepta cada turno cada día (vacío = solo las necesarias). Ver §5.1. |
 | `DEPENDIENTES` | Acampados que necesitan un monitor asignado: sexo de monitor requerido y esfuerzo del turno. |
 | `ASIG_DEPENDIENTE` | Matriz acampado × día con el monitor que le atiende (o `-` si no está presente ese día). Puede venir parcial o totalmente rellena a mano. |
 | `FIJACIONES` | Turnos de trabajo impuestos a mano (`OBLIGA`/`PROHIBE` un monitor en un turno un día concreto). Las celdas amarillas de `TURNOS` cuentan igual que una fila aquí. |
@@ -122,6 +171,26 @@ demás hojas del libro son solo documentación y no las lee el sistema):
 | `ALIAS` | Apodos que usa la rejilla y que no coinciden literalmente con `MONITORES` (p. ej. `Tere GV` → `Teresa Garcia-Villaraco Gonzalez`). |
 | `RESTRICCIONES` | Interruptor de cada regla del modelo: `NOMBRE`, `ACTIVA` (0/1), `TIPO` (dura/blanda). Ver §7. |
 | `RESUMEN` | Hoja de fórmulas que calcula la holgura de cada día (monitores disponibles frente a plazas necesarias); el sistema usa la misma lógica para avisar antes de resolver. |
+
+### 5.1 Turnos que aceptan más gente (`PLAZAS_MAX_POR_DIA`)
+
+Los monitores de fin de semana (`PERMITE_DESCANSO = 0`) prefieren no
+descansar, pero el día de llegada y el de salida hay pocos turnos, así que
+puede sobrar gente. Sin más información, el modelo no tiene dónde ponerlos y
+acaba mandando a descansar a alguno de ellos.
+
+`PLAZAS_MAX_POR_DIA` (misma disposición que `PLAZAS_POR_DIA`) dice cuántas
+personas *acepta como máximo* cada turno cada día. En `cobertura`, cada persona
+por encima de las plazas necesarias es una variable `extra` que cuesta
+`W_EXTRA` (por defecto 40, clave opcional de `CONFIG`): menos que obligar a
+descansar a un monitor de fin de semana, más que dejar descansar a quien puede,
+así que los extras solo aparecen cuando de verdad hacen falta. Sin la hoja, o
+con celdas vacías, el modelo es exactamente el de antes. Lo ya escrito en la
+rejilla por encima de las plazas (histórico o celdas fijadas) amplía por sí
+solo el tope de ese día para que nunca vuelva infactible el modelo.
+
+La hoja se crea y se edita desde la pantalla «Plazas por día»; también se puede
+rellenar a mano.
 
 ## 6. Preparar el Excel de un campamento nuevo
 
@@ -153,7 +222,9 @@ turnos/
 ├── nombres.py              # normalizar() y ResolverNombres (apodos de la hoja ALIAS)
 ├── io_excel/
 │   ├── lector.py            # Excel -> Datos, validado. Aborta con la celda exacta si algo no cuadra
-│   └── escritor.py          # Solucion -> hoja TURNOS, preservando formato/colores
+│   ├── escritor.py          # Solucion -> hoja TURNOS, preservando formato/colores
+│   ├── rejilla.py           # hoja TURNOS "tal cual" (cualquier día) <-> edición celda a celda de la web
+│   └── estructura.py        # guardar plazas/PLAZAS_MAX_POR_DIA y ampliar bloques de TURNOS (inserta filas)
 ├── modelo/
 │   ├── datos.py              # dataclasses: Config, Monitor, TipoTurno, Dependiente, Datos, Solucion
 │   ├── construir.py          # Datos -> ConcreteModel de Pyomo (índices válidos + aplica RESTRICCIONES)
@@ -164,9 +235,19 @@ turnos/
 ├── resolver.py             # llama al solver (nombre/tiempo/gap siempre desde CONFIG), extrae Solucion
 ├── validar.py              # validación previa en lenguaje llano + diagnóstico IIS si es infactible
 ├── interfaz/
-│   ├── app.py                 # Streamlit: 5 pantallas (Rejilla, Monitores, Disponibilidad, Optimizar, Informe)
+│   ├── app.py                 # Streamlit: Rejilla, Monitores, Disponibilidad, Turnos y dependientes,
+│   │                            #   Restricciones, Optimizar, Informe
 │   ├── estado.py               # st.session_state: carga el Excel una vez, lo comparte entre pantallas
-│   └── editor_datos.py         # escribe MONITORES/DISPONIBILIDAD/FIJACIONES desde la interfaz
+│   └── editor_datos.py         # escribe MONITORES/DISPONIBILIDAD/TIPOS_TURNO/DEPENDIENTES/RESTRICCIONES/
+│                                #   CONFIG/FIJACIONES desde cualquiera de las dos interfaces (sin Streamlit)
+├── webapp/                 # interfaz web local alternativa (sin Streamlit), ver más abajo
+│   ├── server.py              # rutas Flask: JSON fino sobre io_excel/interfaz.editor_datos/resolver;
+│   │                            #   la generación corre en un hilo y el cliente consulta su progreso
+│   ├── estado.py               # equivalente a interfaz/estado.py pero sin st.session_state
+│   ├── static/rejilla.js       # pantalla Rejilla: tabla editable, selector, propuesta del optimizador
+│   ├── static/herramientas.js  # diálogos «Plazas por día» y «Turnos para WhatsApp»
+│   ├── static/app.js           # navegación y resto de páginas (monitores, disponibilidad, ...)
+│   └── templates/index.html    # página única, navegación por JS
 └── cli.py                  # `python -m turnos validar|optimizar`
 ```
 
@@ -401,6 +482,9 @@ python -m pytest tests/
 
 - `tests/test_construir_sintetico.py` — construye el modelo con datos
   sintéticos (sin Excel) y comprueba que las restricciones se generan bien.
+- `tests/test_rejilla.py` — lectura/escritura casilla a casilla de la rejilla web.
+- `tests/test_plazas_extra.py` — turnos que aceptan más gente (modelo sintético y
+  Excel), y que ampliar la rejilla no pierde ni mueve ningún dato.
 - `tests/test_reoptimizacion.py` — comprueba, sobre el fixture congelado
   `tests/fixtures/TURNOS_2026_definitivo_original.xlsx`, que re-optimizar
   desde un día posterior deja intactos, celda por celda, los días anteriores.
