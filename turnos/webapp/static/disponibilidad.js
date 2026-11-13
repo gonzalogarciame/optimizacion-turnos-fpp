@@ -75,43 +75,33 @@ async function renderDisponibilidad(cont) {
   });
   const grupos = [...new Set(DP.filas.map((f) => f.meta.grupo).filter(Boolean))].sort();
 
+  cont.classList.add("llena");
   cont.innerHTML = `
-    <div class="rej-titulo">
-      <div>
-        <h2>Disponibilidad</h2>
-        <p>Marca quién viene cada día. <b>Elige un pincel</b> y haz clic o <b>arrastra</b> sobre las casillas.</p>
-      </div>
+    <div class="pagina-cab">
+      <h2>Disponibilidad</h2>
+      <span class="muted">Elige un pincel y haz clic o arrastra. Clic en un nombre: toda su fila · clic en un día: toda la columna.</span>
     </div>
-    <div class="rej-barra" id="disp-barra">
-      <section class="panel">
-        <h4>🖌️ Pincel</h4>
-        <div class="pinceles" id="disp-pinceles"></div>
-        <small class="disp-pista">Pintar una casilla que ya tiene ese pincel la devuelve a «Disponible».
-        Clic en un <b>nombre</b> pinta toda su fila; clic en un <b>día</b>, toda la columna.</small>
-      </section>
-      <section class="panel">
-        <h4>🔎 Buscar</h4>
-        <div class="panel-fila">
-          <input type="search" id="disp-buscar" class="disp-buscar" placeholder="Nombre del monitor…" autocomplete="off">
-        </div>
-        <div class="panel-fila">
-          <select id="disp-grupo"><option value="">Todos los grupos</option>${grupos.map((g) => `<option>${esc(g)}</option>`).join("")}</select>
-          <select id="disp-ver">
-            <option value="todos">Ver todos</option>
-            <option value="ausencias">Solo los que faltan algún día</option>
-            <option value="cambios">Solo los que he cambiado</option>
-          </select>
-        </div>
-      </section>
-      <section class="panel">
-        <h4>✏️ Tus cambios</h4>
-        <div class="panel-fila"><span id="disp-estado" class="rej-estado"></span></div>
-        <div class="panel-fila botones">
-          <button id="disp-guardar">💾 Guardar</button>
-          <button id="disp-deshacer" class="secundario" title="Ctrl+Z">↶ Deshacer</button>
-          <button id="disp-descartar" class="secundario">Descartar</button>
-        </div>
-      </section>
+    <div class="barra" id="disp-barra">
+      <div class="barra-grupo">
+        <span class="etq-barra">Pincel</span>
+        <div class="segmentado" id="disp-pinceles"></div>
+      </div>
+      <span class="barra-sep"></span>
+      <div class="barra-grupo">
+        <input type="search" id="disp-buscar" placeholder="Buscar monitor…" autocomplete="off">
+        <select id="disp-grupo"><option value="">Todos los grupos</option>${grupos.map((g) => `<option>${esc(g)}</option>`).join("")}</select>
+        <select id="disp-ver">
+          <option value="todos">Todos</option>
+          <option value="ausencias">Con ausencias</option>
+          <option value="cambios">Cambiados</option>
+        </select>
+      </div>
+      <div class="barra-grupo derecha">
+        <span id="disp-estado" class="estado"></span>
+        <button id="disp-deshacer" class="secundario" title="Ctrl+Z">Deshacer</button>
+        <button id="disp-descartar" class="secundario">Descartar</button>
+        <button id="disp-guardar">Guardar</button>
+      </div>
     </div>
     <div id="disp-avisos"></div>
     <div class="tablero-caja" id="disp-caja"></div>
@@ -142,7 +132,7 @@ function dibujarPinceles() {
   const cont = DP.el.cont.querySelector("#disp-pinceles");
   cont.innerHTML = "";
   Object.entries(PINCELES).forEach(([c, p]) => {
-    const b = elemento(`<button type="button" class="pincel d-${c} ${DP.pincel === c ? "on" : ""}" title="${esc(p.ayuda)}"><i>${p.icono}</i> ${p.texto}</button>`);
+    const b = elemento(`<button type="button" class="pincel d-${c} ${DP.pincel === c ? "on" : ""}" title="${esc(p.ayuda)}"><i></i>${p.corto}</button>`);
     b.addEventListener("click", () => { DP.pincel = c; dibujarPinceles(); });
     cont.appendChild(b);
   });
@@ -299,9 +289,9 @@ function actualizarCuentas() {
   DP.filas.forEach((f, i) => { if (f.meta.descansa === false && DP.dias.some((d) => valDisp(i, d) === "R")) malos.push(f.nombre); });
   DP.el.avisos.innerHTML = "";
   if (malos.length) {
-    DP.el.avisos.appendChild(elemento(banner("aviso",
+    DP.el.avisos.appendChild(alerta(
       `${malos.length} monitor(es) de fin de semana tienen «Descanso impuesto» (${malos.slice(0, 4).join(", ")}${malos.length > 4 ? "…" : ""}). ` +
-      `Prefieren no descansar y el generador lo marcará como contradictorio: usa «No viene» o quita el descanso.`)));
+      `Prefieren no descansar y el generador lo marcará como contradictorio: usa «No viene» o quita el descanso.`));
   }
 }
 

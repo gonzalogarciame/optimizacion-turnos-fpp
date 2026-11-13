@@ -242,7 +242,8 @@ function pintarResumenes() {
       } else {
         texto = String(celdas.filter(hayNombre).length);
       }
-      td.className = `resumen ${clase}` + (dia < REJ.desde ? " hist" : "") + (sec.tipo === "turno" ? " editable" : "");
+      const extremo = dia === REJ.datos.dias[0].dia || dia === REJ.datos.dias[REJ.datos.dias.length - 1].dia;
+      td.className = `resumen ${clase}` + (dia < REJ.desde ? " hist" : "") + (sec.tipo === "turno" && extremo ? " editable" : "");
       td.innerHTML = texto;
     });
   });
@@ -518,46 +519,39 @@ async function renderRejilla(cont) {
   await revisarTrabajo();
 }
 
-function ayudaVista() { try { return localStorage.getItem("rej_ayuda_vista") === "1"; } catch (e) { return false; } }
-
 function dibujarPantalla(cont) {
+  cont.classList.add("llena");  // la tabla ocupa toda la altura que queda en la ventana
   cont.innerHTML = `
-    <div class="rej-titulo">
-      <div>
-        <h2>Rejilla de turnos</h2>
-        <p>Cada columna es un día y cada fila una plaza. <b>Haz clic en una casilla</b> para elegir quién la hace.</p>
-      </div>
-      <div class="rej-herramientas">
-        <button type="button" class="secundario" id="btn-plazas" title="Plazas necesarias y máximas de cada turno, día a día">🧩 Plazas por día</button>
-        <button type="button" class="secundario" id="btn-whatsapp" title="Texto con los turnos de un día para pegar en el grupo">📲 Turnos para WhatsApp</button>
-      </div>
-      <details class="ayuda" ${ayudaVista() ? "" : "open"}>
-        <summary>¿Cómo se usa?</summary>
+    <div class="pagina-cab">
+      <h2>Rejilla de turnos</h2>
+      <span class="muted">Haz clic en una casilla para elegir quién la hace.</span>
+      <button type="button" class="boton-texto" id="btn-ayuda">¿Cómo se usa?</button>
+      <div class="ayuda-pop" id="ayuda-pop" hidden>
         <ol>
           <li><b>Rellena o corrige a mano:</b> clic en una casilla y elige monitor (puedes escribir para buscar). <kbd>Supr</kbd> vacía, <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshace.</li>
-          <li><b>Guarda</b> con el botón 💾: se escribe en el Excel (con copia de seguridad).</li>
-          <li><b>Deja que el optimizador rellene el resto:</b> elige desde qué día y pulsa «Generar turnos». Verás una <b>propuesta</b> y decides si aplicarla.</li>
-          <li>¿Un día con pocos turnos (llegada, salida) o un turno que admite más gente? Usa <b>🧩 Plazas por día</b>: ahí dices cuántas plazas hay que cubrir y hasta cuántas personas acepta cada turno.</li>
-          <li>Para avisar al grupo: <b>📲 Turnos para WhatsApp</b> genera el texto de un día listo para copiar.</li>
-          <li>Lo que pones a mano en un día que se va a generar queda <b>fijado</b> 📌 y el optimizador lo respeta. Los días anteriores quedan <b>congelados</b> (en gris), pero también puedes corregirlos.</li>
+          <li><b>Guarda</b> para escribir en el Excel (con copia de seguridad).</li>
+          <li><b>Generar turnos</b> rellena el resto con el optimizador desde el día que elijas. Verás una propuesta y decides si aplicarla.</li>
+          <li>Lo que pones a mano en un día que se va a generar queda <b>fijado</b> y el optimizador lo respeta. Los días anteriores están <b>congelados</b> (en gris), pero puedes corregirlos.</li>
+          <li><b>Plazas llegada y salida:</b> cuántas plazas hay que cubrir esos dos días y hasta cuántas personas acepta cada turno.</li>
+          <li><b>WhatsApp</b> genera el texto de los turnos de un día para pegar en el grupo.</li>
         </ol>
-      </details>
+      </div>
     </div>
-    <div class="rej-barra" id="rej-barra"></div>
+    <div id="rej-barra"></div>
     <div id="rej-avisos"></div>
     <div class="tablero-caja" id="rej-caja"></div>
     <div class="leyenda">
-      <span><i class="lg fijada"></i> Fijada 📌 (el optimizador la respeta)</span>
+      <span><i class="lg fijada"></i> Fijada (el optimizador la respeta)</span>
       <span><i class="lg editada"></i> Cambiada, sin guardar</span>
       <span><i class="lg falta"></i> Plaza sin cubrir</span>
       <span><i class="lg conflicto"></i> Monitor repetido ese día</span>
       <span><i class="lg hist"></i> Día congelado</span>
       <span><i class="lg cambia"></i> Cambio propuesto</span>
     </div>`;
-  cont.querySelector("#btn-plazas").addEventListener("click", () => abrirPlazas());
-  cont.querySelector("#btn-whatsapp").addEventListener("click", () => abrirWhatsApp());
-  const ayuda = cont.querySelector("details.ayuda");
-  ayuda.addEventListener("toggle", () => { try { if (!ayuda.open) localStorage.setItem("rej_ayuda_vista", "1"); } catch (e) { /* sin almacenamiento */ } });
+  cont.querySelector("#btn-ayuda").addEventListener("click", () => {
+    const pop = cont.querySelector("#ayuda-pop");
+    pop.hidden = !pop.hidden;
+  });
   REJ.el.cont = cont;
   REJ.el.barra = cont.querySelector("#rej-barra");
   REJ.el.avisos = cont.querySelector("#rej-avisos");
@@ -567,62 +561,78 @@ function dibujarPantalla(cont) {
   pintarTodo();
 }
 
+document.addEventListener("mousedown", (e) => {
+  const pop = document.getElementById("ayuda-pop");
+  if (pop && !pop.hidden && !pop.contains(e.target) && e.target.id !== "btn-ayuda") pop.hidden = true;
+});
+
+// Iconos de línea (sin dependencias)
+const icono = (trazos, tam = 14) =>
+  `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${trazos}</svg>`;
+const ICONO = {
+  chat: icono('<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/>'),
+  ajustes: icono('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>'),
+};
+
 function dibujarBarra() {
   const d = REJ.datos, b = REJ.el.barra;
   if (REJ.modo === "propuesta") {
     const t = REJ.trabajo || {};
     const r = t.resumen || {};
     const faltas = r.total_falta > 1e-6;
-    b.className = "rej-barra propuesta";
+    b.className = "barra propuesta";
     b.innerHTML = `
       <div class="prop-info">
-        <div class="prop-titulo"><span class="prop-icono">✨</span> Propuesta del optimizador para los días ${t.desde}–${d.dia_fin}</div>
+        <div class="prop-titulo">Propuesta del optimizador · días ${t.desde}–${d.dia_fin}</div>
         <div class="prop-datos">
           <span class="etiqueta ${faltas ? "mala" : "buena"}">${faltas ? `${r.total_falta.toFixed(0)} plaza(s) sin cubrir` : "Todos los turnos cubiertos"}</span>
           <span class="etiqueta">${esc(r.estado === "optimo" ? "Solución óptima" : r.estado || "")}</span>
           <span class="etiqueta">${r.tiempo_s != null ? r.tiempo_s.toFixed(1) + " s" : ""}</span>
         </div>
-        <div class="prop-nota">Lo resaltado en <b class="verde">verde</b> es lo que cambia respecto a lo guardado. <b>Aún no se ha escrito nada en el Excel.</b></div>
-        ${r.aviso_solver ? `<div class="prop-nota">ℹ️ ${esc(r.aviso_solver)}</div>` : ""}
+        <div class="prop-nota">Lo resaltado en <b class="verde">verde</b> cambia respecto a lo guardado. <b>Aún no se ha escrito nada en el Excel.</b>${r.aviso_solver ? " " + esc(r.aviso_solver) : ""}</div>
       </div>
-      <div class="rej-acciones">
-        <button id="btn-aplicar" class="grande">✅ Aplicar y guardar en el Excel</button>
-        <button id="btn-descartar" class="secundario grande">Descartar</button>
+      <div class="barra-grupo derecha">
+        <button type="button" id="btn-whatsapp" class="secundario icono">${ICONO.chat} WhatsApp</button>
+        <button type="button" id="btn-descartar" class="secundario grande">Descartar</button>
+        <button type="button" id="btn-aplicar" class="grande">Aplicar y guardar en el Excel</button>
       </div>`;
     b.querySelector("#btn-aplicar").addEventListener("click", aplicarPropuesta);
     b.querySelector("#btn-descartar").addEventListener("click", descartarPropuesta);
+    b.querySelector("#btn-whatsapp").addEventListener("click", () => abrirWhatsApp());
     return;
   }
-  b.className = "rej-barra";
+  b.className = "barra";
   const opcionesDia = d.dias.map(({ dia, semana }) => `<option value="${dia}">${dia} (${semana})</option>`).join("")
     + `<option value="${d.dia_fin + 1}">ninguno (todo congelado)</option>`;
   b.innerHTML = `
-    <section class="panel">
-      <h4>⚡ Generar con el optimizador</h4>
-      <div class="panel-fila">
-        <label class="rej-desde">Desde el día
-          <select id="sel-desde">${opcionesDia}</select>
-        </label>
-        <button id="btn-generar" title="Lanza el optimizador desde ese día. Antes de tocar el Excel te enseña una propuesta.">Generar turnos</button>
-      </div>
-      <label class="rej-chk" title="Más lento, pero reparte el esfuerzo de forma más equilibrada"><input type="checkbox" id="chk-dos-fases"> Equilibrar mejor el esfuerzo (más lento)</label>
-    </section>
-    <section class="panel">
-      <h4>✏️ Tus cambios</h4>
-      <div class="panel-fila">
-        <span id="rej-estado-cambios" class="rej-estado"></span>
-      </div>
-      <div class="panel-fila botones">
-        <button id="btn-guardar-rej">💾 Guardar</button>
-        <button id="btn-deshacer" class="secundario" title="Ctrl+Z">↶ Deshacer</button>
-        <button id="btn-descartar-cambios" class="secundario">Descartar</button>
-        <a class="enlace-boton" href="/api/descargar" title="Descargar el Excel tal como está guardado">⬇ Excel</a>
-      </div>
-    </section>`;
+    <div class="barra-grupo">
+      <label class="campo">Generar desde el día
+        <select id="sel-desde">${opcionesDia}</select>
+      </label>
+      <button type="button" id="btn-generar" title="Lanza el optimizador desde ese día. Antes de tocar el Excel te enseña una propuesta.">Generar turnos</button>
+      <details class="opciones">
+        <summary title="Más opciones">···</summary>
+        <div class="opciones-caja"><label><input type="checkbox" id="chk-dos-fases"> Equilibrar mejor el esfuerzo (más lento)</label></div>
+      </details>
+    </div>
+    <span class="barra-sep"></span>
+    <div class="barra-grupo">
+      <button type="button" id="btn-plazas" class="secundario icono" title="Plazas necesarias y máximas de cada turno el día de llegada y el de salida">${ICONO.ajustes} Plazas llegada y salida</button>
+      <button type="button" id="btn-whatsapp" class="secundario icono" title="Texto con los turnos de un día para pegar en el grupo">${ICONO.chat} WhatsApp</button>
+    </div>
+    <div class="barra-grupo derecha">
+      <span id="rej-estado-cambios" class="estado"></span>
+      <button type="button" id="btn-deshacer" class="secundario" title="Ctrl+Z">Deshacer</button>
+      <button type="button" id="btn-descartar-cambios" class="secundario">Descartar</button>
+      <button type="button" id="btn-guardar-rej">Guardar</button>
+      <a class="enlace-boton" href="/api/descargar" title="Descargar el Excel tal como está guardado">Excel</a>
+    </div>`;
   const sel = b.querySelector("#sel-desde");
   sel.value = String(REJ.desde);
   sel.addEventListener("change", () => cambiarDesde(Number(sel.value)));
   b.querySelector("#btn-generar").addEventListener("click", generar);
+  b.querySelector("#btn-plazas").addEventListener("click", () => abrirPlazas());
+  b.querySelector("#btn-whatsapp").addEventListener("click", () => abrirWhatsApp());
   b.querySelector("#btn-deshacer").addEventListener("click", deshacer);
   b.querySelector("#btn-descartar-cambios").addEventListener("click", descartarCambios);
   b.querySelector("#btn-guardar-rej").addEventListener("click", () => guardarCambios());
@@ -638,12 +648,15 @@ function dibujarTabla() {
   const tabla = elemento(`<table class="tablero"><thead></thead><tbody></tbody></table>`);
   const thead = tabla.querySelector("thead"), tbody = tabla.querySelector("tbody");
 
-  // Cabecera 1: días
+  // Cabecera 1: días (el primero es la llegada y el último la salida: solo esos dos tienen plazas propias)
+  const primero = d.dias[0].dia, ultimo = d.dias[d.dias.length - 1].dia;
+  const esExtremo = (dia) => dia === primero || dia === ultimo;
   const trDias = elemento(`<tr></tr>`);
   trDias.appendChild(elemento(`<th class="etq esquina">Turnos</th>`));
   d.dias.forEach(({ dia, semana, finde }) => {
-    const th = elemento(`<th class="dia${finde ? " finde" : ""}" title="Clic: generar desde este día"><b>${dia}</b><small>${esc(semana)}</small><i class="marca-desde">▶ genera</i>
-      <span class="dia-acciones"><button type="button" class="mini" data-acc="wa" title="Copiar los turnos de este día para WhatsApp">📲</button><button type="button" class="mini" data-acc="plazas" title="Plazas de este día">🧩</button></span></th>`);
+    const tag = d.dias.length > 1 ? (dia === primero ? "llegada" : dia === ultimo ? "salida" : "") : "";
+    const th = elemento(`<th class="dia${finde ? " finde" : ""}" title="Clic: generar desde este día"><b>${dia}</b><small>${esc(semana)}</small>${tag ? `<i class="tag-dia">${tag}</i>` : ""}
+      <span class="dia-acciones"><button type="button" class="mini" data-acc="wa" title="Turnos de este día para WhatsApp">${ICONO.chat}</button>${esExtremo(dia) ? `<button type="button" class="mini" data-acc="plazas" title="Plazas de llegada y salida">${ICONO.ajustes}</button>` : ""}</span></th>`);
     th.addEventListener("click", (e) => {
       const acc = e.target.closest && e.target.closest("button.mini");
       if (acc) { e.stopPropagation(); acc.dataset.acc === "wa" ? abrirWhatsApp(dia) : abrirPlazas(dia); return; }
@@ -669,10 +682,10 @@ function dibujarTabla() {
   // Cuerpo
   d.secciones.forEach((sec) => {
     const plegada = REJ.plegadas.has(sec.clave);
-    const [icono, acento] = estiloSeccion(sec);
-    const trSec = elemento(`<tr class="sec ${sec.tipo}" style="--acento:${acento}"></tr>`);
+    const acento = estiloSeccion(sec)[1];
+    const trSec = elemento(`<tr class="sec ${sec.tipo}" style="--acento-fila:${acento}"></tr>`);
     const etq = elemento(`<td class="etq"><button type="button" class="plegar" aria-expanded="${!plegada}" title="${plegada ? "Desplegar" : "Plegar"}">${plegada ? "▸" : "▾"}</button>
-      <span class="sec-icono">${icono}</span><span class="sec-titulo">${esc(sec.tipo === "turno" ? rotulo(sec.titulo) : sec.titulo)}</span>
+      <i class="punto"></i><span class="sec-titulo">${esc(sec.tipo === "turno" ? rotulo(sec.titulo) : sec.titulo)}</span>
       ${insigniaSexo(sec.sexo_req)}
       ${sec.tipo === "descanso" ? `<small class="nota-sec" title="En los días que se regeneran, esta lista la recalcula el optimizador">la recalcula el optimizador</small>` : ""}</td>`);
     etq.addEventListener("click", () => {
@@ -684,9 +697,9 @@ function dibujarTabla() {
     trSec.appendChild(etq);
     d.dias.forEach(({ dia }) => {
       const td = document.createElement("td");
-      if (sec.tipo === "turno") {
+      if (sec.tipo === "turno" && esExtremo(dia)) {
         td.title = "Clic para cambiar las plazas de este día";
-        td.addEventListener("click", () => abrirPlazas(dia));
+        td.addEventListener("click", () => abrirPlazas());
       }
       REJ.resumenes.set(`${sec.clave}|${dia}`, td);
       trSec.appendChild(td);
@@ -695,7 +708,7 @@ function dibujarTabla() {
     if (plegada) return;
 
     sec.filas.forEach((fila, idx) => {
-      const tr = elemento(`<tr class="fila ${sec.tipo}" style="--acento:${acento}"></tr>`);
+      const tr = elemento(`<tr class="fila ${sec.tipo}" style="--acento-fila:${acento}"></tr>`);
       const etiqueta = sec.tipo === "dependiente"
         ? `<span class="acampado">${esc(fila.etiqueta)}</span>${insigniaSexo(fila.sexo_req)}`
         : `<span class="num">${sec.tipo === "turno" ? "Plaza " : ""}${idx + 1}</span>`;
@@ -813,18 +826,27 @@ function actualizarBarra() {
     .map(({ dia }) => dia);
   if (incompletos.length) {
     const uno = incompletos.length === 1;
-    av.appendChild(elemento(banner("aviso",
+    av.appendChild(alerta(
       `Antes de generar desde el día ${REJ.desde}, completa ${uno ? "el día congelado" : "los días congelados"} ${incompletos.join(", ")}: ` +
-      `${uno ? "tiene" : "tienen"} monitores sin puesto o repetidos (míralo en la fila «Sin puesto» y en rojo).`)));
+      `${uno ? "tiene" : "tienen"} monitores sin puesto o repetidos (fila «Sin puesto» y casillas en rojo).`));
   }
   const nConf = REJ.conflictos.size;
-  if (nConf) {
-    av.appendChild(elemento(banner("error", `${nConf} casilla(s) con un monitor repetido el mismo día (en rojo).`)));
-  }
+  if (nConf) av.appendChild(alerta(`${nConf} casilla(s) con un monitor repetido el mismo día (en rojo).`, "error"));
 }
 
-// Los monitores de fin de semana prefieren no descansar: si hay alguno en descanso se avisa y se ofrece
-// hacer sitio (que algún turno acepte más gente ese día).
+// Una línea de aviso sobre la tabla; el texto completo queda en el tooltip.
+function alerta(texto, tipo = "", boton = null) {
+  const el = elemento(`<div class="alerta ${tipo}"><span title="${esc(texto)}">${texto}</span></div>`);
+  if (boton) {
+    const b = elemento(`<button type="button" class="secundario">${esc(boton.texto)}</button>`);
+    b.addEventListener("click", boton.accion);
+    el.appendChild(b);
+  }
+  return el;
+}
+
+// Los monitores de fin de semana prefieren no descansar: si hay alguno en descanso se avisa y, si el día
+// es el de llegada o el de salida, se ofrece hacer sitio (que algún turno acepte más gente).
 function avisarFindeEnDescanso(av) {
   const porDia = new Map();
   REJ.celdas.forEach((c, key) => {
@@ -836,16 +858,12 @@ function avisarFindeEnDescanso(av) {
       porDia.get(info.dia).push(c.v);
     }
   });
+  const dias = REJ.datos.dias.map((x) => x.dia);
   porDia.forEach((nombres, dia) => {
-    const caja = elemento(`<div class="banner aviso aviso-finde-descanso"></div>`);
-    caja.innerHTML = `<span><b>${nombres.length} monitor(es) de fin de semana están en descanso el día ${dia}</b> (prefieren no descansar): ${esc(nombres.join(", "))}. ` +
-      `Si es por falta de sitio, haz que algún turno acepte más gente ese día.</span> `;
-    if (REJ.modo === "edicion") {
-      const b = elemento(`<button type="button" class="secundario">🧩 Plazas del día ${dia}</button>`);
-      b.addEventListener("click", () => abrirPlazas(dia));
-      caja.appendChild(b);
-    }
-    av.appendChild(caja);
+    const extremo = dia === dias[0] || dia === dias[dias.length - 1];
+    const texto = `<b>${nombres.length} monitor(es) de fin de semana en descanso el día ${dia}</b> (prefieren no descansar): ${esc(nombres.join(", "))}`;
+    const boton = extremo && REJ.modo === "edicion" ? { texto: "Plazas llegada y salida", accion: () => abrirPlazas() } : null;
+    av.appendChild(alerta(texto, "", boton));
   });
 }
 

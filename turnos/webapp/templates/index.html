@@ -9,37 +9,34 @@
 <body>
   <header id="cabecera">
     <div class="marca">
-      <span class="marca-logo" aria-hidden="true">⛺</span>
-      <div>
-        <h1>Turnos del campamento</h1>
-        <p>Fundación Proyecto Persona</p>
-      </div>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20 12 4l9 16z"/><path d="M12 4v16"/><path d="M9 20l3-6 3 6"/></svg>
+      <span>Turnos del campamento</span>
     </div>
-    <div id="resumen-excel" class="resumen-chips"></div>
-    <details id="carga-excel" class="menu-excel">
-      <summary>Excel en uso</summary>
-      <div class="menu-excel-cuerpo">
-        <label>Ruta del fichero
-          <input type="text" id="input-ruta">
-        </label>
-        <button id="btn-cargar">Cargar / recargar</button>
-        <span id="estado-carga"></span>
-      </div>
-    </details>
+    <nav id="nav">
+      <button class="nav-btn" data-pagina="rejilla">Rejilla</button>
+      <button class="nav-btn" data-pagina="disponibilidad">Disponibilidad</button>
+      <button class="nav-btn" data-pagina="monitores">Monitores</button>
+      <button class="nav-btn" data-pagina="turnos">Turnos y dependientes</button>
+      <button class="nav-btn" data-pagina="restricciones">Restricciones</button>
+      <button class="nav-btn" data-pagina="informe">Informe</button>
+    </nav>
+    <div class="cabecera-der">
+      <div id="resumen-excel" class="resumen-texto"></div>
+      <details id="carga-excel" class="menu-excel">
+        <summary>Excel</summary>
+        <div class="menu-excel-cuerpo">
+          <label>Ruta del fichero
+            <input type="text" id="input-ruta">
+          </label>
+          <button id="btn-cargar">Cargar / recargar</button>
+          <span id="estado-carga"></span>
+        </div>
+      </details>
+    </div>
   </header>
   <div id="avisos-excel"></div>
 
-  <div id="cuerpo">
-    <nav id="nav">
-      <button class="nav-btn" data-pagina="rejilla"><i>📅</i><span>Rejilla de turnos</span></button>
-      <button class="nav-btn" data-pagina="monitores"><i>👥</i><span>Monitores</span></button>
-      <button class="nav-btn" data-pagina="disponibilidad"><i>🗓️</i><span>Disponibilidad</span></button>
-      <button class="nav-btn" data-pagina="turnos"><i>🧩</i><span>Turnos y dependientes</span></button>
-      <button class="nav-btn" data-pagina="restricciones"><i>⚙️</i><span>Restricciones</span></button>
-      <button class="nav-btn" data-pagina="informe"><i>📊</i><span>Informe</span></button>
-    </nav>
-    <main id="contenido"></main>
-  </div>
+  <main id="contenido"></main>
 
   <script src="/static/rejilla.js"></script>
   <script src="/static/herramientas.js"></script>

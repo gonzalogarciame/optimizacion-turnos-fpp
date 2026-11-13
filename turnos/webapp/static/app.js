@@ -242,17 +242,11 @@ async function refrescarResumen() {
     avisos.innerHTML = info.error ? banner("error", info.error) : "";
     return info;
   }
-  const chip = (icono, valor, texto) => `<span class="chip-resumen"><i>${icono}</i><b>${valor}</b> ${texto}</span>`;
   resumen.innerHTML =
-    chip("📆", `${info.dia_inicio}–${info.dia_fin}`, "días") +
-    chip("👥", info.n_monitores, "monitores") +
-    chip("🧒", info.n_dependientes, "dependientes");
-  if (info.avisos && info.avisos.length) {
-    avisos.innerHTML = `<details class="avisos-lectura"><summary>ℹ️ ${info.avisos.length} aviso(s) al leer el Excel (no impiden trabajar)</summary>
-      <ul>${info.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></details>`;
-  } else {
-    avisos.innerHTML = "";
-  }
+    `<span><b>${info.dia_fin - info.dia_inicio + 1}</b> días (${info.dia_inicio}–${info.dia_fin})</span>` +
+    `<span><b>${info.n_monitores}</b> monitores</span>` +
+    `<span><b>${info.n_dependientes}</b> dependientes</span>`;
+  avisos.innerHTML = "";
   return info;
 }
 
@@ -295,6 +289,7 @@ function dibujarNav() {
 
 async function dibujarPagina() {
   const cont = document.getElementById("contenido");
+  cont.classList.remove("llena");  // las pantallas con tabla grande se ajustan a la altura de la ventana
   cont.innerHTML = "<p>Cargando…</p>";
   try {
     await PAGINAS[paginaActual].render(cont);
@@ -382,6 +377,8 @@ async function renderTurnosDependientes(cont) {
 
     <div class="seccion">
       <h3>Plazas por día</h3>
+      <p class="subtitulo">Solo se pueden cambiar los días de llegada y salida (también desde la Rejilla, con «Plazas llegada y salida»).
+      Los demás días usan las plazas normales de cada turno.</p>
       <div id="grid-plazas"></div>
       <button id="btn-guardar-plazas" style="margin-top:8px;">Guardar plazas por día</button>
       <div id="msg-plazas"></div>
@@ -451,7 +448,13 @@ async function renderTurnosDependientes(cont) {
   const gridPlazas = crearGrid(
     [
       { clave: "TURNO", etiqueta: "Turno", tipo: "texto", editable: false, fija: true },
-      ...info.dias.map((d) => ({ clave: String(d), etiqueta: String(d), tipo: "numero" })),
+      // Solo la llegada y la salida se editan (los días intermedios usan las plazas normales de cada turno).
+      ...info.dias.map((d, i) => ({
+        clave: String(d),
+        etiqueta: i === 0 ? `${d} (llegada)` : i === info.dias.length - 1 ? `${d} (salida)` : String(d),
+        tipo: "numero",
+        editable: i === 0 || i === info.dias.length - 1,
+      })),
     ],
     plazas.filas
   );

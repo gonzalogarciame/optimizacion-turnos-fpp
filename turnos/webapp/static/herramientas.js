@@ -2,7 +2,7 @@
 
 // =====================================================================
 // Diálogos de la rejilla:
-//   · "Plazas del día": plazas necesarias y "acepta hasta" de cada turno, por día.
+//   · "Plazas de llegada y salida": plazas necesarias y "acepta hasta" de cada turno el primer y el último día.
 //   · "WhatsApp": texto con los turnos de un día, listo para pegar en el grupo.
 // Se carga después de rejilla.js (usa REJ, esc, rotulo, abrirModal, toast...) y antes de app.js.
 // =====================================================================
@@ -16,118 +16,89 @@ const nombreDia = (info) => {
 };
 
 // ---------------------------------------------------------------------
-// Plazas del día
+// Plazas de llegada y salida
+// Solo el primer y el último día tienen plazas propias (los demás usan las normales de cada turno).
 // ---------------------------------------------------------------------
-const PL = { datos: null, trabajo: {}, orig: {}, dia: null, copiarA: new Set() };
+const PL = { datos: null, trabajo: {}, orig: {}, dias: [], modal: null };
 
 const numONulo = (v) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
 
-async function abrirPlazas(dia) {
+async function abrirPlazas() {
   if (REJ.modo !== "edicion") { toast("Aplica o descarta la propuesta antes de cambiar las plazas.", "info"); return; }
   let datos;
   try { datos = await api("GET", "/api/plazas"); } catch (e) { toast(e.message, "error"); return; }
+  const primero = datos.dias[0], ultimo = datos.dias[datos.dias.length - 1];
+  const extremos = primero.dia === ultimo.dia ? [primero] : [primero, ultimo];
   PL.datos = datos;
+  PL.dias = extremos.map((x) => x.dia);
   PL.trabajo = {};
   PL.orig = {};
   datos.turnos.forEach((t) => {
     PL.trabajo[t.turno] = {};
     PL.orig[t.turno] = {};
-    datos.dias.forEach(({ dia: d }) => {
+    PL.dias.forEach((d) => {
       const v = { plazas: t.plazas[String(d)], max: t.max[String(d)] ?? null };
       PL.trabajo[t.turno][d] = { ...v };
       PL.orig[t.turno][d] = { ...v };
     });
   });
-  PL.dia = dia ?? REJ.desde ?? datos.dias[0].dia;
-  if (!datos.dias.some((x) => x.dia === PL.dia)) PL.dia = datos.dias[0].dia;
-  PL.copiarA = new Set();
 
+  const rotuloDia = (x) => (x.dia === primero.dia ? "Llegada" : "Salida");
+  const cabeceras = extremos.map((x) => `<th colspan="2" class="sep">${rotuloDia(x)}<small>${esc(nombreDia(x))}</small></th>`).join("");
+  const subcab = extremos.map(() => `<th class="sep">Necesarias</th><th>Acepta hasta</th>`).join("");
   const m = abrirModal(`
-    <h3>🧩 Plazas por día</h3>
-    <p class="pl-ayuda">Para cada turno: cuántas plazas <b>hay que cubrir</b> ese día y hasta cuántas personas <b>acepta</b> como máximo.
-    Un turno con 0 necesarias «no existe» ese día. Si sobra gente (por ejemplo el día de llegada o de salida), el optimizador la
-    coloca en los turnos que aceptan más, en vez de mandar a descansar a los monitores de fin de semana.</p>
-    <div class="pl-cab">
-      <button type="button" class="secundario mini-nav" id="pl-prev" title="Día anterior">‹</button>
-      <select id="pl-dia">${datos.dias.map((x) => `<option value="${x.dia}">${esc(nombreDia(x))}</option>`).join("")}</select>
-      <button type="button" class="secundario mini-nav" id="pl-sig" title="Día siguiente">›</button>
-    </div>
-    <table class="pl-tabla"><thead><tr><th>Turno</th><th>Necesarias</th><th>Acepta hasta</th></tr></thead><tbody id="pl-cuerpo"></tbody></table>
-    <div id="pl-resumen" class="pl-resumen"></div>
-    <div class="pl-copiar">
-      <div><b>Copiar este día a otros días</b></div>
-      <div id="pl-chips" class="pl-chips"></div>
-      <div class="pl-atajos">
-        <button type="button" class="secundario" id="pl-todos">Todos</button>
-        <button type="button" class="secundario" id="pl-extremos">Primero y último</button>
-        <button type="button" class="secundario" id="pl-ninguno">Ninguno</button>
-        <button type="button" id="pl-copiar">Copiar</button>
-      </div>
-    </div>
+    <h3>Plazas de llegada y salida</h3>
+    <p class="pl-ayuda"><b>Necesarias:</b> plazas que hay que cubrir ese día (0 = el turno «no existe»).
+    <b>Acepta hasta:</b> máximo de personas que puede tener. Si sobra gente, el optimizador la coloca en los turnos que aceptan más
+    en vez de mandar a descansar a los monitores de fin de semana. Los días intermedios usan las plazas normales de cada turno
+    (pantalla «Turnos y dependientes»).</p>
+    <table class="pl-tabla">
+      <thead><tr><th rowspan="2">Turno</th>${cabeceras}</tr><tr>${subcab}</tr></thead>
+      <tbody id="pl-cuerpo"></tbody>
+    </table>
+    <div class="pl-resumenes">${PL.dias.map((d) => `<div class="pl-resumen" id="pl-resumen-${d}"></div>`).join("")}</div>
     <div class="modal-pie">
       <button type="button" class="secundario" id="pl-cancelar">Cancelar</button>
-      <button type="button" id="pl-guardar" style="margin-left:8px;">Guardar plazas</button>
+      <button type="button" id="pl-guardar">Guardar plazas</button>
     </div>`, "ancho");
   PL.modal = m;
-  const q = (s) => m.querySelector(s);
-  q("#pl-dia").addEventListener("change", () => irDiaPlazas(Number(q("#pl-dia").value)));
-  q("#pl-prev").addEventListener("click", () => moverDiaPlazas(-1));
-  q("#pl-sig").addEventListener("click", () => moverDiaPlazas(1));
-  q("#pl-cancelar").addEventListener("click", cerrarModal);
-  q("#pl-guardar").addEventListener("click", guardarPlazas);
-  q("#pl-todos").addEventListener("click", () => { PL.copiarA = new Set(PL.datos.dias.map((x) => x.dia)); PL.copiarA.delete(PL.dia); dibujarChipsPlazas(); });
-  q("#pl-extremos").addEventListener("click", () => {
-    const ds = PL.datos.dias.map((x) => x.dia);
-    PL.copiarA = new Set([ds[0], ds[ds.length - 1]]); PL.copiarA.delete(PL.dia); dibujarChipsPlazas();
-  });
-  q("#pl-ninguno").addEventListener("click", () => { PL.copiarA = new Set(); dibujarChipsPlazas(); });
-  q("#pl-copiar").addEventListener("click", copiarDiaPlazas);
-  irDiaPlazas(PL.dia);
-}
 
-function moverDiaPlazas(delta) {
-  const ds = PL.datos.dias.map((x) => x.dia);
-  const i = ds.indexOf(PL.dia) + delta;
-  if (i >= 0 && i < ds.length) irDiaPlazas(ds[i]);
-}
-
-function irDiaPlazas(dia) {
-  PL.dia = dia;
-  PL.copiarA.delete(dia);
-  const m = PL.modal;
-  m.querySelector("#pl-dia").value = String(dia);
   const cuerpo = m.querySelector("#pl-cuerpo");
-  cuerpo.innerHTML = "";
-  PL.datos.turnos.forEach((t) => {
-    const v = PL.trabajo[t.turno][dia];
-    const [icono] = estiloSeccion({ tipo: "turno", titulo: t.turno });
-    const tr = elemento(`<tr>
-      <td class="pl-turno"><span>${icono}</span> ${esc(rotulo(t.turno))} ${insigniaSexo(t.sexo_req)}</td>
-      <td><input type="number" min="0" class="pl-plazas" value="${v.plazas}"></td>
-      <td><input type="number" min="0" class="pl-max" value="${v.max ?? ""}" placeholder="${v.plazas}"></td>
-    </tr>`);
-    const inpP = tr.querySelector(".pl-plazas"), inpM = tr.querySelector(".pl-max");
-    const sincronizar = () => {
-      const p = Math.max(0, numONulo(inpP.value) ?? 0);
-      const mx = numONulo(inpM.value);
-      PL.trabajo[t.turno][dia] = { plazas: p, max: mx !== null && mx > p ? mx : null };
-      inpM.placeholder = String(p);
-      resumenPlazas();
-    };
-    inpP.addEventListener("input", sincronizar);
-    inpM.addEventListener("input", sincronizar);
-    [inpP, inpM].forEach((i) => i.addEventListener("focus", () => i.select()));
+  datos.turnos.forEach((t) => {
+    const acento = estiloSeccion({ tipo: "turno", titulo: t.turno })[1];
+    const celdas = PL.dias.map((d) => {
+      const v = PL.trabajo[t.turno][d];
+      return `<td class="sep"><input type="number" min="0" class="pl-plazas" data-dia="${d}" value="${v.plazas}"></td>
+              <td><input type="number" min="0" class="pl-max" data-dia="${d}" value="${v.max ?? ""}" placeholder="${v.plazas}"></td>`;
+    }).join("");
+    const tr = elemento(`<tr style="--acento-fila:${acento}"><td class="pl-turno"><i class="punto"></i>${esc(rotulo(t.turno))} ${insigniaSexo(t.sexo_req)}</td>${celdas}</tr>`);
+    PL.dias.forEach((d) => {
+      const inpP = tr.querySelector(`.pl-plazas[data-dia="${d}"]`), inpM = tr.querySelector(`.pl-max[data-dia="${d}"]`);
+      const sincronizar = () => {
+        const p = Math.max(0, numONulo(inpP.value) ?? 0);
+        const mx = numONulo(inpM.value);
+        PL.trabajo[t.turno][d] = { plazas: p, max: mx !== null && mx > p ? mx : null };
+        inpM.placeholder = String(p);
+        resumenPlazas(d);
+      };
+      inpP.addEventListener("input", sincronizar);
+      inpM.addEventListener("input", sincronizar);
+      [inpP, inpM].forEach((i) => i.addEventListener("focus", () => i.select()));
+    });
     cuerpo.appendChild(tr);
   });
-  dibujarChipsPlazas();
-  resumenPlazas();
+  m.querySelector("#pl-cancelar").addEventListener("click", cerrarModal);
+  m.querySelector("#pl-guardar").addEventListener("click", guardarPlazas);
+  PL.dias.forEach(resumenPlazas);
+  const primerInput = m.querySelector(".pl-plazas");
+  if (primerInput) primerInput.focus();
 }
 
-function resumenPlazas() {
-  const d = String(PL.dia);
+function resumenPlazas(dia) {
+  const d = String(dia);
   let necesarias = 0, sitio = 0;
   PL.datos.turnos.forEach((t) => {
-    const v = PL.trabajo[t.turno][PL.dia];
+    const v = PL.trabajo[t.turno][dia];
     necesarias += v.plazas;
     sitio += Math.max(v.plazas, v.max ?? 0);
   });
@@ -139,46 +110,27 @@ function resumenPlazas() {
   let clase, texto;
   if (libres < pendientes) {
     clase = "mal";
-    texto = `⚠ Faltan ${pendientes - libres} sitio(s) para los monitores de fin de semana: quedan ${libres} sitios sin ocupar a mano y ${pendientes} monitores de fin de semana sin puesto. Alguno tendría que descansar: sube «Acepta hasta» en algún turno.`;
+    texto = `Faltan ${pendientes - libres} sitio(s) para los monitores de fin de semana (quedan ${libres} libres y hay ${pendientes} sin puesto). Alguno tendría que descansar: sube «Acepta hasta» en algún turno.`;
   } else if (cabe < disp) {
     clase = "aviso";
-    texto = `Los monitores de fin de semana caben (${libres} sitios libres para ${pendientes}). Como mínimo ${disp - cabe} monitor(es) más tendrán que descansar por falta de sitio (normal si hay muchos disponibles).`;
+    texto = `Los de fin de semana caben (${libres} sitios libres para ${pendientes}). Al menos ${disp - cabe} monitor(es) más descansarán por falta de sitio (normal).`;
   } else {
     clase = "ok";
-    texto = `✓ Caben todos: hay sitio para ${cabe} personas y ${disp} monitores disponibles.`;
+    texto = `Caben todos: sitio para ${cabe} personas y ${disp} monitores disponibles.`;
   }
-  PL.modal.querySelector("#pl-resumen").className = `pl-resumen ${clase}`;
-  PL.modal.querySelector("#pl-resumen").innerHTML =
-    `<div class="pl-cifras"><span><b>${disp}</b> monitores disponibles (<b>${finde}</b> de fin de semana)</span>
-     <span><b>${dep}</b> dependientes</span><span><b>${necesarias}</b> plazas necesarias</span><span><b>${sitio}</b> plazas como máximo</span>
-     <span><b>${PL.datos.fijados[d]}</b> ya fijados a mano</span></div>
+  const info = PL.datos.dias.find((x) => x.dia === dia);
+  const caja = PL.modal.querySelector(`#pl-resumen-${dia}`);
+  caja.className = `pl-resumen ${clase}`;
+  caja.innerHTML =
+    `<b class="pl-dia">${dia === PL.datos.dias[0].dia ? "Llegada" : "Salida"} · día ${dia} (${esc(info.semana)})</b>
+     <div class="pl-cifras"><span><b>${disp}</b> disponibles (<b>${finde}</b> de fin de semana)</span><span><b>${dep}</b> dependientes</span>
+     <span><b>${necesarias}</b> necesarias</span><span><b>${sitio}</b> como máximo</span><span><b>${PL.datos.fijados[d]}</b> fijados a mano</span></div>
      <div>${esc(texto)}</div>`;
-}
-
-function dibujarChipsPlazas() {
-  const cont = PL.modal.querySelector("#pl-chips");
-  cont.innerHTML = "";
-  PL.datos.dias.forEach((x) => {
-    if (x.dia === PL.dia) return;
-    const chip = elemento(`<button type="button" class="chip-dia ${PL.copiarA.has(x.dia) ? "on" : ""} ${x.finde ? "finde" : ""}">${x.dia} <small>${esc(x.semana)}</small></button>`);
-    chip.addEventListener("click", () => { PL.copiarA.has(x.dia) ? PL.copiarA.delete(x.dia) : PL.copiarA.add(x.dia); dibujarChipsPlazas(); });
-    cont.appendChild(chip);
-  });
-}
-
-function copiarDiaPlazas() {
-  if (!PL.copiarA.size) { toast("Marca primero los días a los que copiar.", "info"); return; }
-  PL.datos.turnos.forEach((t) => {
-    PL.copiarA.forEach((d) => { PL.trabajo[t.turno][d] = { ...PL.trabajo[t.turno][PL.dia] }; });
-  });
-  toast(`Copiado a ${PL.copiarA.size} día(s). Revisa y pulsa «Guardar plazas».`, "info");
-  PL.copiarA = new Set();
-  dibujarChipsPlazas();
 }
 
 async function guardarPlazas() {
   const cambios = [];
-  PL.datos.turnos.forEach((t) => PL.datos.dias.forEach(({ dia }) => {
+  PL.datos.turnos.forEach((t) => PL.dias.forEach((dia) => {
     const a = PL.trabajo[t.turno][dia], b = PL.orig[t.turno][dia];
     if (a.plazas !== b.plazas || (a.max ?? null) !== (b.max ?? null)) cambios.push({ turno: t.turno, dia, plazas: a.plazas, max: a.max });
   }));
@@ -193,7 +145,7 @@ async function guardarPlazas() {
     cerrarModal();
     await recargarManteniendoVista();
     const añadidas = Object.entries(r.filas_añadidas || {}).map(([t, n]) => `${rotulo(t)} +${n}`).join(", ");
-    toast(`Plazas guardadas (${r.cambios} cambio${r.cambios === 1 ? "" : "s"}).${añadidas ? " Filas nuevas en la rejilla: " + añadidas + "." : ""}`, "exito");
+    toast(`Plazas guardadas.${añadidas ? " Filas nuevas en la rejilla: " + añadidas + "." : ""}`, "exito");
   } catch (e) {
     toast(e.message, "error");
   }

@@ -140,14 +140,14 @@ y los días en columnas, leída directamente de la hoja `TURNOS`:
   pinta su fila y clic en un día pinta la columna (solo los monitores filtrados).
   Buscador y filtros (grupo, «solo los que faltan algún día»). Guarda con copia de
   seguridad y avisa si a un monitor de fin de semana se le impone descanso.
-- **Plazas por día (🧩):** cuántas plazas hay que cubrir cada día en cada turno y
-  hasta cuántas personas *acepta* como máximo. Un turno con 0 necesarias «no
-  existe» ese día (llegada, salida). Se abre desde el botón de arriba, desde el
-  icono de la cabecera de un día o haciendo clic en el contador de un turno
-  (`3/3`). Permite copiar un día a otros y avisa de si hay sitio para los
-  monitores de fin de semana. Si un turno pasa a aceptar más gente de la que
-  cabe en su bloque, la rejilla **crece sola** (se insertan filas en `TURNOS`).
-- **Turnos para WhatsApp (📲):** texto con los turnos de un día (por defecto con
+- **Plazas de llegada y salida:** solo el primer y el último día tienen plazas propias
+  (los demás usan las normales de cada turno). Para cada turno se define cuántas
+  plazas hay que cubrir y hasta cuántas personas *acepta*; un turno con 0 necesarias
+  «no existe» ese día. Se abre desde el botón de la barra o desde el icono de la
+  cabecera de esos dos días, y avisa de si hay sitio para los monitores de fin de
+  semana. Si un turno pasa a aceptar más gente de la que cabe en su bloque, la
+  rejilla **crece sola** (se insertan filas en `TURNOS`).
+- **WhatsApp:** texto con los turnos de un día (por defecto con
   dependientes y sin descanso), con la opción «solo nombre de pila», listo para
   copiar o abrir en WhatsApp. Refleja lo que se ve en pantalla, también una
   propuesta aún sin aplicar.
@@ -194,7 +194,7 @@ con celdas vacías, el modelo es exactamente el de antes. Lo ya escrito en la
 rejilla por encima de las plazas (histórico o celdas fijadas) amplía por sí
 solo el tope de ese día para que nunca vuelva infactible el modelo.
 
-La hoja se crea y se edita desde la pantalla «Plazas por día»; también se puede
+La hoja se crea y se edita desde «Plazas llegada y salida» en la Rejilla; también se puede
 rellenar a mano.
 
 ## 6. Preparar el Excel de un campamento nuevo
@@ -250,7 +250,7 @@ turnos/
 │   │                            #   la generación corre en un hilo y el cliente consulta su progreso
 │   ├── estado.py               # equivalente a interfaz/estado.py pero sin st.session_state
 │   ├── static/rejilla.js       # pantalla Rejilla: tabla editable, selector, propuesta del optimizador
-│   ├── static/herramientas.js  # diálogos «Plazas por día» y «Turnos para WhatsApp»
+│   ├── static/herramientas.js  # diálogos «Plazas de llegada y salida» y «WhatsApp»
 │   ├── static/app.js           # navegación y resto de páginas (monitores, disponibilidad, ...)
 │   └── templates/index.html    # página única, navegación por JS
 └── cli.py                  # `python -m turnos validar|optimizar`
