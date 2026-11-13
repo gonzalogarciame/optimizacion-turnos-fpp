@@ -117,6 +117,16 @@ una copia de seguridad en la carpeta `copias/` (se conservan las últimas 40).
 python -m turnos.webapp [datos/<campamento>/campamento.db | libro.xlsx]
 ```
 
+Todo se hace desde la web, sin conexión a internet:
+
+- **Menú «Campamento»** (arriba a la derecha): cambiar de campamento, **crear uno nuevo**
+  (quincena, año, mes y días de llegada y salida: sale vacío, con los monitores,
+  dependientes, turnos y reglas del actual; opcionalmente copia quién viene), **importar
+  un Excel** subiéndolo, o descargar una copia en Excel.
+- **Pestaña «Versiones»:** lista de las copias de seguridad; se puede guardar una
+  versión a mano y **volver a cualquiera** (lo de ahora se guarda antes, así que
+  también se puede deshacer la vuelta atrás).
+
 Desde la línea de comandos:
 
 ```bash
@@ -264,7 +274,8 @@ turnos/
 │   ├── esquema.py             # tablas; correspondencia con las hojas
 │   ├── importar.py            # Excel -> base de datos
 │   ├── exportar.py            # base de datos -> Excel (compartir, imprimir)
-│   ├── copias.py              # copias de seguridad en copias/
+│   ├── copias.py              # copias de seguridad en copias/ (guardar, listar, restaurar)
+│   ├── nuevo.py               # listar campamentos y crear uno nuevo a partir de otro
 │   ├── rejilla.py             # la rejilla leída y editada celda a celda (lo que usa la web)
 │   ├── edicion.py             # monitores, disponibilidad, turnos, plazas, dependientes, restricciones
 │   ├── cargar.py              # base de datos -> Datos (igual que io_excel/lector.py)
@@ -531,7 +542,7 @@ python -m pytest tests/
 - `tests/test_rejilla.py` — lectura/escritura casilla a casilla de la rejilla web.
 - `tests/test_hasta.py` — generar solo unos días (horizonte recortado).
 - `tests/test_almacen.py` — base de datos: da los mismos datos que el Excel, guarda soluciones y fijados, exporta a Excel y vuelve.
-- `tests/test_webapp_db.py` — la web sobre la base de datos de principio a fin (editar, plazas, altas, generar y aplicar).
+- `tests/test_webapp_db.py` — la web sobre la base de datos de principio a fin (editar, plazas, altas, generar y aplicar, campamento nuevo, importar un Excel, versiones).
 - `tests/test_plazas_extra.py` — turnos que aceptan más gente (modelo sintético y
   Excel), y que ampliar la rejilla no pierde ni mueve ningún dato.
 - `tests/test_reoptimizacion.py` — comprueba, sobre el fixture congelado
