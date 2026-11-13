@@ -25,7 +25,6 @@ from .estructura import asegurar_filas_turnos, filas_necesarias_por_solucion
 AMARILLO = PatternFill(start_color="FFFFE599", end_color="FFFFE599", fill_type="solid")
 GRIS_CLARO = PatternFill(start_color="FFD9D9D9", end_color="FFD9D9D9", fill_type="solid")
 SIN_RELLENO = PatternFill(fill_type=None)
-ROJO_SUAVE = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
 
 
 def _mapa_dias_por_columna(ws, fila_cabecera: int, col_ini: int, col_fin: int) -> Dict[int, int]:

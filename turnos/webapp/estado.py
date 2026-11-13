@@ -1,5 +1,4 @@
-"""Estado compartido de la app web: igual que `interfaz.estado`, pero sin
-Streamlit. Como es una herramienta de escritorio para un único usuario local,
+"""Estado compartido de la app web. Como es una herramienta de escritorio para un único usuario local,
 basta con un diccionario a nivel de módulo (no hay sesiones ni usuarios
 concurrentes que aislar).
 

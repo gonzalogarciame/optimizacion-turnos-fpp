@@ -8,3 +8,6 @@ venv/
 *.egg-info/
 .pytest_cache/
 datos/practica-vacio/
+
+# Copias de seguridad que crea la app antes de cada escritura
+*_backup_*.xlsx

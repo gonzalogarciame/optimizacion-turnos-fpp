@@ -13,8 +13,7 @@ turnos en la Fundación puede usarlo, mientras su Excel siga la misma
 estructura de hojas que se describe más abajo.
 
 - CLI: `python -m turnos validar|optimizar --excel datos/<campamento>/turnos.xlsx`
-- Interfaz visual (Streamlit): `streamlit run turnos/interfaz/app.py`
-- Interfaz web local (sin Streamlit): `python -m turnos.webapp`, luego abrir
+- Interfaz web local: `python -m turnos.webapp`, luego abrir
   `http://127.0.0.1:5000` en el navegador. Es una tabla turnos × días donde
   se edita cada casilla con un selector de monitores, también en días ya
   pasados, y desde la que se lanza el optimizador a partir de un día
@@ -107,7 +106,7 @@ Interfaz interactiva (ver y editar la rejilla, monitores, disponibilidad, y
 lanzar la optimización desde el navegador):
 
 ```bash
-streamlit run turnos/interfaz/app.py
+python -m turnos.webapp   # y abrir http://127.0.0.1:5000
 ```
 
 ### 4.1 Interfaz web: la rejilla
@@ -231,6 +230,7 @@ turnos/
 │   ├── lector.py            # Excel -> Datos, validado. Aborta con la celda exacta si algo no cuadra
 │   ├── escritor.py          # Solucion -> hoja TURNOS, preservando formato/colores
 │   ├── rejilla.py           # hoja TURNOS "tal cual" (cualquier día) <-> edición celda a celda de la web
+│   ├── editor_datos.py      # lee/escribe MONITORES, DISPONIBILIDAD, TIPOS_TURNO, DEPENDIENTES, RESTRICCIONES, CONFIG
 │   └── estructura.py        # guardar plazas/PLAZAS_MAX_POR_DIA y ampliar bloques de TURNOS (inserta filas)
 ├── modelo/
 │   ├── datos.py              # dataclasses: Config, Monitor, TipoTurno, Dependiente, Datos, Solucion
@@ -241,16 +241,10 @@ turnos/
 │       └── r01_...r20_*.py     # las reglas activables desde la hoja RESTRICCIONES
 ├── resolver.py             # llama al solver (nombre/tiempo/gap siempre desde CONFIG), extrae Solucion
 ├── validar.py              # validación previa en lenguaje llano + diagnóstico IIS si es infactible
-├── interfaz/
-│   ├── app.py                 # Streamlit: Rejilla, Monitores, Disponibilidad, Turnos y dependientes,
-│   │                            #   Restricciones, Optimizar, Informe
-│   ├── estado.py               # st.session_state: carga el Excel una vez, lo comparte entre pantallas
-│   └── editor_datos.py         # escribe MONITORES/DISPONIBILIDAD/TIPOS_TURNO/DEPENDIENTES/RESTRICCIONES/
-│                                #   CONFIG/FIJACIONES desde cualquiera de las dos interfaces (sin Streamlit)
-├── webapp/                 # interfaz web local alternativa (sin Streamlit), ver más abajo
-│   ├── server.py              # rutas Flask: JSON fino sobre io_excel/interfaz.editor_datos/resolver;
+├── webapp/                 # interfaz web local, ver más abajo
+│   ├── server.py              # rutas Flask: JSON fino sobre io_excel/resolver;
 │   │                            #   la generación corre en un hilo y el cliente consulta su progreso
-│   ├── estado.py               # equivalente a interfaz/estado.py pero sin st.session_state
+│   ├── estado.py               # Excel cargado y estado de la generación, en memoria
 │   ├── static/rejilla.js       # pantalla Rejilla: tabla editable, selector, propuesta del optimizador
 │   ├── static/herramientas.js  # diálogos «Plazas de llegada y salida» y «WhatsApp»
 │   ├── static/app.js           # navegación y resto de páginas (monitores, disponibilidad, ...)

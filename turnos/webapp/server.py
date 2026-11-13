@@ -1,7 +1,7 @@
 """Rutas Flask de la interfaz web local.
 
 Cada ruta es una fina envoltura JSON alrededor de las mismas funciones que
-usa la CLI y la interfaz Streamlit (`io_excel`, `interfaz.editor_datos`,
+usa la CLI (`io_excel`, `io_excel.editor_datos`,
 `modelo.construir`, `resolver`, `validar`): esta capa no contiene lógica de
 negocio propia, solo serializa `Datos`/`DataFrame` a JSON y de vuelta.
 """
@@ -20,7 +20,7 @@ import pyomo.environ as pyo
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from . import estado
-from ..interfaz.editor_datos import (
+from ..io_excel.editor_datos import (
     agregar_dependiente,
     agregar_tipo_turno,
     guardar_config_valores,

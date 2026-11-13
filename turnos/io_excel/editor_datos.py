@@ -1,13 +1,10 @@
-"""Escritura de las hojas "maestras" (MONITORES, DISPONIBILIDAD, FIJACIONES)
-desde la interfaz Streamlit.
+"""Lectura y escritura de las hojas "maestras" (MONITORES, DISPONIBILIDAD, TIPOS_TURNO,
+PLAZAS_POR_DIA, DEPENDIENTES, RESTRICCIONES, CONFIG...) para la interfaz web.
 
 Esto es distinto de `io_excel.escritor`, que solo escribe la SOLUCIÓN
 (`Solucion -> TURNOS`). Aquí se editan los datos de entrada: altas/bajas de
-monitores, la matriz D/X/R y las fijaciones manuales. Vive en `interfaz/`
-porque solo la usa la interfaz interactiva (la CLI no edita datos, solo
-optimiza); mantiene `io_excel.escritor` fiel a su única responsabilidad
-("regla de oro" del README: el modelo y la solución no saben de Excel más
-que a través de esos dos módulos).
+monitores, la matriz D/X/R, los tipos de turno y las plazas. Solo lo usa la
+interfaz web (la CLI no edita datos, solo optimiza).
 """
 from __future__ import annotations
 
@@ -19,7 +16,7 @@ import pandas as pd
 from openpyxl.utils import get_column_letter
 
 from ..config import leer_pares_clave_valor
-from ..io_excel.estructura import desplazar_filas as _desplazar_filas
+from .estructura import desplazar_filas as _desplazar_filas
 from ..modelo.datos import TURNO_DESCANSO
 from ..nombres import normalizar
 
@@ -253,22 +250,6 @@ def guardar_config_valores(ruta: str, cambios: dict) -> None:
             continue
         ws.cell(fila, 2).value = valor
 
-    wb.save(ruta)
-
-
-def agregar_fijacion(ruta: str, dia: int, turno: str, nombre: str, tipo: str = "OBLIGA") -> None:
-    wb = openpyxl.load_workbook(ruta, data_only=False)
-    ws = wb["FIJACIONES"]
-    cab = _mapa_cabecera(ws)
-    fila_libre = 2
-    while ws.cell(fila_libre, cab["DIA"]).value not in (None, ""):
-        fila_libre += 1
-    ws.cell(fila_libre, cab["DIA"]).value = dia
-    ws.cell(fila_libre, cab["TURNO"]).value = turno
-    ws.cell(fila_libre, cab["NOMBRE"]).value = nombre
-    ws.cell(fila_libre, cab["TIPO"]).value = tipo
-    if "ORIGEN" in cab:
-        ws.cell(fila_libre, cab["ORIGEN"]).value = "añadida desde la interfaz"
     wb.save(ruta)
 
 

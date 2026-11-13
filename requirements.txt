@@ -2,7 +2,6 @@ pyomo>=6.7
 gurobipy>=11.0
 openpyxl>=3.1
 pandas>=2.0
-streamlit>=1.30
 flask>=3.0
 
 # Solver alternativo gratuito, opcional. Solo hace falta si CONFIG!SOLVER se

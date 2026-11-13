@@ -10,7 +10,7 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from turnos.interfaz.editor_datos import (
+from turnos.io_excel.editor_datos import (
     guardar_disponibilidad_df,
     guardar_plazas_por_dia_df,
     leer_disponibilidad_df,
