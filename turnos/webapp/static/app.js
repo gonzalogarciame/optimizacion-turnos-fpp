@@ -229,7 +229,7 @@ function crearGrid(columnas, filasIniciales, opciones = {}) {
 }
 
 // ---------------------------------------------------------------------
-// Barra superior: carga del Excel + resumen
+// Barra superior: carga del campamento + resumen
 // ---------------------------------------------------------------------
 async function refrescarResumen() {
   const info = await api("GET", "/api/estado");
@@ -322,7 +322,7 @@ async function renderMonitores(cont) {
     DISPONIBILIDAD con 'D' todos los días). Borrar una fila no borra su disponibilidad
     ni su histórico en TURNOS: revísalo a mano si hace falta.</p>
     <div id="zona-grid"></div>
-    <button id="btn-guardar" style="margin-top:12px;">Guardar monitores en Excel</button>
+    <button id="btn-guardar" style="margin-top:12px;">Guardar monitores</button>
     <div id="zona-mensajes"></div>
   `;
   const columnas = [

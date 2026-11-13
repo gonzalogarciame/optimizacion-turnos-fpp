@@ -66,18 +66,3 @@ def escribir_solucion_db(ruta: str, datos: Datos, solucion: Solucion) -> int:
     finally:
         con.close()
     return len(filas)
-
-
-def guardar_config_valores(ruta: str, valores: Dict[str, object]) -> None:
-    """Cambia valores de CONFIG (p. ej. DIA_REOPTIMIZACION)."""
-    con = abrir(ruta)
-    try:
-        with con:
-            for clave, valor in valores.items():
-                con.execute(
-                    "INSERT INTO config (clave, valor) VALUES (?, ?) "
-                    "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
-                    (clave, str(valor)),
-                )
-    finally:
-        con.close()

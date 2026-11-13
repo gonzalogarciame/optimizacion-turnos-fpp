@@ -194,3 +194,23 @@ def test_no_se_borra_un_monitor_con_turnos(bd):
     with pytest.raises(sqlite3.IntegrityError):
         con.execute("DELETE FROM monitores WHERE nombre = ?", (nombre,))
     con.close()
+
+
+# ----------------------------------------------------------------------
+# Exportar a Excel y volver
+# ----------------------------------------------------------------------
+@pytest.mark.parametrize("despues_de_generar", [False, True])
+def test_exportar_a_excel_se_lee_igual_que_la_base_de_datos(bd, tmp_path, despues_de_generar):
+    from turnos.almacen.exportar import exportar_excel
+
+    ini = leer_datos_db(bd).cfg.dia_inicio
+    if despues_de_generar:
+        datos, sol = _resolver_un_dia(bd, ini)
+        escribir_solucion_db(bd, datos, sol)
+    xlsx = exportar_excel(bd, str(tmp_path / "salida.xlsx"))
+    for desde in (None, ini):
+        _iguales(leer_datos_db(bd, desde=desde), leer_datos(xlsx, desde=desde))
+    # y se puede volver a importar: sale la misma base de datos
+    otra = str(tmp_path / "otra.db")
+    importar_excel(xlsx, otra)
+    _iguales(leer_datos_db(bd, desde=ini), leer_datos_db(otra, desde=ini))

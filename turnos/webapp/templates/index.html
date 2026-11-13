@@ -23,12 +23,13 @@
     <div class="cabecera-der">
       <div id="resumen-excel" class="resumen-texto"></div>
       <details id="carga-excel" class="menu-excel">
-        <summary>Excel</summary>
+        <summary>Campamento</summary>
         <div class="menu-excel-cuerpo">
-          <label>Ruta del fichero
+          <label>Base de datos del campamento (.db), o un Excel para importarlo
             <input type="text" id="input-ruta">
           </label>
           <button id="btn-cargar">Cargar / recargar</button>
+          <a class="enlace-boton" href="/api/descargar" title="Descargar una copia en formato Excel">Descargar Excel</a>
           <span id="estado-carga"></span>
         </div>
       </details>

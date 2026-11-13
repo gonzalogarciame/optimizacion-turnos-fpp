@@ -13,21 +13,42 @@ Dos ideas que conviene tener claras:
 """
 from __future__ import annotations
 
+import sqlite3
 import threading
 from typing import Optional
 
-import openpyxl
+from pathlib import Path
 
-from ..config import leer_pares_clave_valor
-from ..io_excel.lector import leer_datos
+from ..almacen.cargar import leer_datos_db
+from ..almacen.esquema import abrir
+from ..almacen.importar import importar_excel
 from ..modelo.errores import ErrorDatos
 from ..modelo.datos import Datos
 from ..nombres import ErrorNombreNoReconocido
 
-RUTA_POR_DEFECTO = "datos/2026-quincena2-18al30jul/turnos.xlsx"
+RUTA_POR_DEFECTO = "datos/2026-quincena2-18al30jul/turnos.xlsx"  # solo si aún no hay ninguna base de datos
+
+
+def ruta_inicial() -> str:
+    """La base de datos modificada más recientemente bajo datos/ (o el Excel de siempre, que se importa solo)."""
+    candidatas = [p for p in Path("datos").glob("**/*.db") if "copias" not in p.parts]
+    if candidatas:
+        return str(max(candidatas, key=lambda p: p.stat().st_mtime)).replace("\\", "/")
+    return RUTA_POR_DEFECTO
+
+
+def resolver_ruta(ruta: str) -> str:
+    """Una ruta .xlsx se importa a una base de datos con el mismo nombre (si no existe ya) y se usa esa."""
+    p = Path(ruta)
+    if p.suffix.lower() in (".xlsx", ".xlsm"):
+        destino = p.with_suffix(".db")
+        if not destino.exists():
+            importar_excel(str(p), str(destino))
+        return str(destino).replace("\\", "/")
+    return ruta
 
 _estado = {
-    "ruta": RUTA_POR_DEFECTO,
+    "ruta": ruta_inicial(),
     "datos": None,
     "desde": None,
     "modelo": None,
@@ -39,22 +60,21 @@ cerrojo = threading.RLock()
 
 
 def _cfg_basica(ruta: str) -> dict:
-    wb = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
+    con = abrir(ruta)
     try:
-        return leer_pares_clave_valor(wb["CONFIG"])
+        return {r["clave"]: r["valor"] for r in con.execute("SELECT clave, valor FROM config")}
     finally:
-        wb.close()
+        con.close()
 
 
 def cargar(ruta: str, desde: Optional[int] = None) -> bool:
-    """Lee el Excel. `desde` (opcional) fija el día de re-optimización."""
+    """Lee el campamento. `desde` (opcional) fija el día de re-optimización."""
     try:
+        ruta = resolver_ruta(ruta)
         cfg = _cfg_basica(ruta)
         dia_inicio = int(cfg["DIA_INICIO"])
-        datos = leer_datos(ruta, desde=dia_inicio)
-    except (ErrorDatos, ErrorNombreNoReconocido, ValueError, KeyError, TypeError, OSError) as exc:
-        # OSError incluye PermissionError: el Excel puede estar abierto en
-        # Excel en ese mismo instante (bloqueado para lectura en Windows).
+        datos = leer_datos_db(ruta, desde=dia_inicio)
+    except (ErrorDatos, ErrorNombreNoReconocido, ValueError, KeyError, TypeError, OSError, sqlite3.Error) as exc:
         _estado["error_carga"] = str(exc)
         _estado["datos"] = None
         return False

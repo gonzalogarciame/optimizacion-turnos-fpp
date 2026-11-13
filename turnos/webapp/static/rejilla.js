@@ -8,7 +8,7 @@
 // - Los cambios son un borrador hasta pulsar "Guardar" (copia de seguridad
 //   automática). Ctrl+Z los deshace.
 // - "Generar" lanza el optimizador desde el día elegido y enseña una
-//   PROPUESTA: no toca el Excel hasta pulsar "Aplicar".
+//   PROPUESTA: no toca lo guardado hasta pulsar "Aplicar".
 //
 // Se carga antes que app.js, que usa renderRejilla() y rejillaTieneCambios().
 // Depende de api(), elemento(), banner() de app.js (solo se usan al ejecutar).
@@ -17,7 +17,7 @@
 const REJ = {
   datos: null,            // respuesta de /api/rejilla (o de la propuesta)
   celdas: new Map(),      // clave -> {v, f, u}   estado actual (borrador)
-  orig: new Map(),        // clave -> {v, f}      lo que hay en el Excel
+  orig: new Map(),        // clave -> {v, f}      lo que hay guardado
   info: new Map(),        // clave -> {sec, fila, idx, dia, tipo, key}
   monitor: new Map(),     // nombre -> {nombre, sexo, grupo, alias}
   diaInfo: new Map(),     // dia -> {dia, semana, finde}
@@ -532,7 +532,7 @@ function dibujarPantalla(cont) {
       <div class="ayuda-pop" id="ayuda-pop" hidden>
         <ol>
           <li><b>Rellena o corrige a mano:</b> clic en una casilla y elige monitor (puedes escribir para buscar). <kbd>Supr</kbd> vacía, <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshace.</li>
-          <li><b>Guarda</b> para escribir en el Excel (con copia de seguridad).</li>
+          <li><b>Guarda</b> para que los cambios queden en el campamento (con copia de seguridad).</li>
           <li><b>Generar turnos</b> rellena el resto con el optimizador desde el día que elijas. Verás una propuesta y decides si aplicarla.</li>
           <li>Lo que pones a mano en un día que se va a generar queda <b>fijado</b> y el optimizador lo respeta. Los días anteriores están <b>congelados</b> (en gris), pero puedes corregirlos.</li>
           <li><b>Plazas llegada y salida:</b> cuántas plazas hay que cubrir esos dos días y hasta cuántas personas acepta cada turno.</li>
@@ -592,12 +592,12 @@ function dibujarBarra() {
           <span class="etiqueta">${esc(r.estado === "optimo" ? "Solución óptima" : r.estado || "")}</span>
           <span class="etiqueta">${r.tiempo_s != null ? r.tiempo_s.toFixed(1) + " s" : ""}</span>
         </div>
-        <div class="prop-nota">Lo resaltado en <b class="verde">verde</b> cambia respecto a lo guardado. <b>Aún no se ha escrito nada en el Excel.</b>${t.hasta && t.hasta < d.dia_fin ? ` Los días ${t.hasta + 1}–${d.dia_fin} no se tocan.` : ""}${r.aviso_solver ? " " + esc(r.aviso_solver) : ""}</div>
+        <div class="prop-nota">Lo resaltado en <b class="verde">verde</b> cambia respecto a lo guardado. <b>Aún no se ha guardado nada.</b>${t.hasta && t.hasta < d.dia_fin ? ` Los días ${t.hasta + 1}–${d.dia_fin} no se tocan.` : ""}${r.aviso_solver ? " " + esc(r.aviso_solver) : ""}</div>
       </div>
       <div class="barra-grupo derecha">
         <button type="button" id="btn-whatsapp" class="secundario icono">${ICONO.chat} WhatsApp</button>
         <button type="button" id="btn-descartar" class="secundario grande">Descartar</button>
-        <button type="button" id="btn-aplicar" class="grande">Aplicar y guardar en el Excel</button>
+        <button type="button" id="btn-aplicar" class="grande">Aplicar y guardar</button>
       </div>`;
     b.querySelector("#btn-aplicar").addEventListener("click", aplicarPropuesta);
     b.querySelector("#btn-descartar").addEventListener("click", descartarPropuesta);
@@ -615,7 +615,7 @@ function dibujarBarra() {
       <label class="campo">Días
         <select id="sel-num" title="Cuántos días genera el optimizador a partir del día elegido"></select>
       </label>
-      <button type="button" id="btn-generar" title="Lanza el optimizador desde ese día. Antes de tocar el Excel te enseña una propuesta.">Generar turnos</button>
+      <button type="button" id="btn-generar" title="Lanza el optimizador desde ese día. Antes de guardar nada te enseña una propuesta.">Generar turnos</button>
       <details class="opciones">
         <summary title="Más opciones">···</summary>
         <div class="opciones-caja"><label><input type="checkbox" id="chk-dos-fases"> Equilibrar mejor el esfuerzo (más lento)</label></div>
@@ -631,7 +631,7 @@ function dibujarBarra() {
       <button type="button" id="btn-deshacer" class="secundario" title="Ctrl+Z">Deshacer</button>
       <button type="button" id="btn-descartar-cambios" class="secundario">Descartar</button>
       <button type="button" id="btn-guardar-rej">Guardar</button>
-      <a class="enlace-boton" href="/api/descargar" title="Descargar el Excel tal como está guardado">Excel</a>
+      <a class="enlace-boton" href="/api/descargar" title="Descargar una copia en formato Excel">Excel</a>
     </div>`;
   const sel = b.querySelector("#sel-desde");
   sel.value = String(REJ.desde);
@@ -947,7 +947,7 @@ async function generar() {
   if (REJ.desde > REJ.datos.dia_fin) { toast("Elige un día de inicio dentro del horizonte para generar.", "error"); return; }
   const pendientes = cambiosPendientes().length;
   if (pendientes) {
-    if (!confirm(`Hay ${pendientes} cambio(s) sin guardar. Se guardarán en el Excel (con copia de seguridad) antes de generar.\n\n¿Continuar?`)) return;
+    if (!confirm(`Hay ${pendientes} cambio(s) sin guardar. Se guardarán (con copia de seguridad) antes de generar.\n\n¿Continuar?`)) return;
     if (!(await guardarCambios({ silencioso: true }))) return;
   }
   const dosFases = REJ.el.barra.querySelector("#chk-dos-fases").checked;
@@ -1046,7 +1046,7 @@ async function aplicarPropuesta() {
     await cargarRejilla();
     dibujarPantalla(REJ.el.cont);
     await refrescarResumen();
-    toast("Propuesta aplicada y guardada en el Excel (con copia de seguridad).", "exito");
+    toast("Propuesta aplicada y guardada (con copia de seguridad).", "exito");
   } catch (e) {
     toast(e.message, "error");
     if (btn) btn.disabled = false;
@@ -1057,5 +1057,5 @@ async function descartarPropuesta() {
   try { await api("POST", "/api/generar/descartar", {}); } catch (e) { /* nada */ }
   await cargarRejilla();
   dibujarPantalla(REJ.el.cont);
-  toast("Propuesta descartada. El Excel no se ha modificado.", "info");
+  toast("Propuesta descartada. No se ha guardado nada.", "info");
 }

@@ -7,7 +7,9 @@ negocio propia, solo serializa `Datos`/`DataFrame` a JSON y de vuelta.
 """
 from __future__ import annotations
 
+import io
 import shutil
+import sqlite3
 import tempfile
 import threading
 import time
@@ -20,17 +22,19 @@ import pyomo.environ as pyo
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from . import estado
-from ..io_excel.editor_datos import (
+from ..almacen.cargar import leer_datos_db
+from ..almacen.copias import hacer_copia_seguridad
+from ..almacen.edicion import (
     agregar_dependiente,
     agregar_tipo_turno,
     guardar_config_valores,
     guardar_dependientes_df,
     guardar_disponibilidad_df,
     guardar_monitores_df,
+    guardar_plazas_db,
     guardar_plazas_por_dia_df,
     guardar_restricciones_df,
     guardar_tipos_turno_df,
-    leer_config_editable,
     leer_dependientes_df,
     leer_disponibilidad_df,
     leer_monitores_df,
@@ -38,19 +42,18 @@ from ..io_excel.editor_datos import (
     leer_restricciones_df,
     leer_tipos_turno_df,
 )
-from ..io_excel.escritor import escribir_solucion
-from ..io_excel.escritor import hacer_copia_seguridad
-from ..io_excel.estructura import ErrorPlazas, guardar_plazas
-from ..io_excel.lector import leer_datos
-from ..modelo.errores import ErrorDatos
-from ..io_excel.rejilla import (
+from ..almacen.exportar import exportar_excel
+from ..almacen.guardar import escribir_solucion_db
+from ..almacen.rejilla import (
     ErrorEdicionRejilla,
-    guardar_cambios_rejilla,
-    asignaciones_trabajo,
-    descansos_asignados,
+    asignaciones_trabajo_db,
+    descansos_asignados_db,
+    guardar_cambios_rejilla_db,
     info_dias,
-    leer_rejilla,
+    leer_rejilla_db,
 )
+from ..io_excel.estructura import ErrorPlazas
+from ..modelo.errores import ErrorDatos
 from ..modelo.construir import ErrorModeloInconsistente, construir_modelo
 from ..nombres import ErrorNombreNoReconocido
 from ..resolver import resolver_modelo
@@ -95,7 +98,7 @@ def _con_datos():
 
 
 _MENSAJE_EXCEL_ABIERTO = (
-    "No se puede escribir en el Excel. Si lo tienes abierto en Excel, ciérralo y vuelve a intentarlo."
+    "No se puede escribir en la base de datos. Si hay otra ventana o programa usándola, ciérralo y vuelve a intentarlo."
 )
 SOLVER_ALTERNATIVO = "appsi_highs"
 
@@ -148,7 +151,7 @@ def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool, 
     """
     try:
         try:
-            datos = leer_datos(ruta, desde=desde, hasta=hasta)
+            datos = leer_datos_db(ruta, desde=desde, hasta=hasta)
         except (ErrorDatos, ErrorNombreNoReconocido, ValueError) as exc:
             mensaje = str(exc).replace(
                 "Corrige la rejilla o baja DIA_REOPTIMIZACION.",
@@ -206,11 +209,12 @@ def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool, 
         trabajo["fase"] = "Preparando la vista previa…"
         directorio = tempfile.mkdtemp(prefix="turnos_previa_")
         try:
-            ruta_previa = str(Path(directorio) / "previa.xlsx")
-            escribir_solucion(ruta, datos, solucion, ruta_salida=ruta_previa)
-            # La vista previa puede tener más filas (turnos que aceptan extras): se lee con su propio diseño.
-            datos_previa = leer_datos(ruta_previa, desde=datos.dias[0])
-            propuesta = leer_rejilla(ruta_previa, datos_previa)
+            # La propuesta se escribe en una copia de la base de datos: la original no se toca hasta «Aplicar».
+            ruta_previa = str(Path(directorio) / "previa.db")
+            shutil.copy2(ruta, ruta_previa)
+            escribir_solucion_db(ruta_previa, datos, solucion)
+            datos_previa = leer_datos_db(ruta_previa, desde=datos.dias[0])
+            propuesta = leer_rejilla_db(ruta_previa, datos_previa)
         finally:
             shutil.rmtree(directorio, ignore_errors=True)
 
@@ -281,7 +285,7 @@ def crear_app() -> Flask:
     def api_monitores_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         _, ruta = ctx
         return jsonify(_filas_json(leer_monitores_df(ruta)))
 
@@ -289,13 +293,16 @@ def crear_app() -> Flask:
     def api_monitores_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         df = _df_desde_peticion()
         for col in ("PERMITE_DESCANSO", "PENALIZAR_DESCANSO"):
             if col in df.columns:
                 df[col] = df[col].astype(int)
-        avisos = guardar_monitores_df(ruta, df, datos.dias)
+        try:
+            avisos = guardar_monitores_df(ruta, df, datos.dias)
+        except ValueError as exc:
+            return _error(str(exc))
         estado.cargar(ruta)
         return jsonify({"avisos": avisos})
 
@@ -306,7 +313,7 @@ def crear_app() -> Flask:
     def api_disponibilidad_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         return jsonify({
             "dias": datos.dias,
@@ -317,16 +324,16 @@ def crear_app() -> Flask:
             },
             "filas": _filas_json(leer_disponibilidad_df(ruta, datos.dias)),
             # Descansos que ya hay asignados en la rejilla (hoja TURNOS), por monitor.
-            "descansos": descansos_asignados(ruta, datos),
+            "descansos": descansos_asignados_db(ruta),
             # Turnos y dependientes ya escritos en la rejilla, para avisar si se les quita la disponibilidad.
-            "asignaciones": asignaciones_trabajo(ruta, datos),
+            "asignaciones": asignaciones_trabajo_db(ruta),
         })
 
     @app.post("/api/disponibilidad")
     def api_disponibilidad_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         if _generando():
             return _error("Hay una generación en curso: espera a que termine para guardar.", 409)
         datos, ruta = ctx
@@ -343,7 +350,7 @@ def crear_app() -> Flask:
         try:
             hacer_copia_seguridad(ruta)
             guardar_disponibilidad_df(ruta, df, datos.dias)
-        except PermissionError:
+        except (PermissionError, sqlite3.OperationalError):
             return _error(_MENSAJE_EXCEL_ABIERTO, 409)
         estado.cargar(ruta)
         return jsonify({"ok": True, "filas": len(df)})
@@ -355,7 +362,7 @@ def crear_app() -> Flask:
     def api_tipos_turno_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         _, ruta = ctx
         return jsonify(_filas_json(leer_tipos_turno_df(ruta)))
 
@@ -363,7 +370,7 @@ def crear_app() -> Flask:
     def api_tipos_turno_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         guardar_tipos_turno_df(ruta, _df_desde_peticion())
         estado.cargar(ruta)
@@ -373,7 +380,7 @@ def crear_app() -> Flask:
     def api_plazas_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         return jsonify({
             "dias": datos.dias,
@@ -384,7 +391,7 @@ def crear_app() -> Flask:
     def api_plazas_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         guardar_plazas_por_dia_df(ruta, _df_desde_peticion(), datos.dias)
         estado.cargar(ruta)
@@ -394,7 +401,7 @@ def crear_app() -> Flask:
     def api_tipos_turno_nuevo():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         cuerpo = request.get_json(force=True) or {}
         try:
@@ -419,7 +426,7 @@ def crear_app() -> Flask:
     def api_dependientes_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         _, ruta = ctx
         return jsonify(_filas_json(leer_dependientes_df(ruta)))
 
@@ -427,7 +434,7 @@ def crear_app() -> Flask:
     def api_dependientes_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         guardar_dependientes_df(ruta, _df_desde_peticion())
         estado.cargar(ruta)
@@ -437,7 +444,7 @@ def crear_app() -> Flask:
     def api_dependientes_nuevo():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         cuerpo = request.get_json(force=True) or {}
         try:
@@ -461,7 +468,7 @@ def crear_app() -> Flask:
     def api_restricciones_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         _, ruta = ctx
         return jsonify(_filas_json(leer_restricciones_df(ruta)))
 
@@ -469,7 +476,7 @@ def crear_app() -> Flask:
     def api_restricciones_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         guardar_restricciones_df(ruta, _df_desde_peticion())
         estado.cargar(ruta)
@@ -479,7 +486,7 @@ def crear_app() -> Flask:
     def api_config_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, _ = ctx
         cfg = datos.cfg
         return jsonify({
@@ -501,7 +508,7 @@ def crear_app() -> Flask:
     def api_config_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
         cuerpo = request.get_json(force=True) or {}
         guardar_config_valores(ruta, cuerpo)
@@ -515,24 +522,24 @@ def crear_app() -> Flask:
     def api_rejilla_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, ruta = ctx
-        return jsonify(_payload_rejilla(datos, ruta, leer_rejilla(ruta, datos)))
+        return jsonify(_payload_rejilla(datos, ruta, leer_rejilla_db(ruta, datos)))
 
     @app.post("/api/rejilla/guardar")
     def api_rejilla_guardar():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         if _generando():
             return _error("Hay una generación en curso: espera a que termine para guardar.", 409)
         datos, ruta = ctx
         cuerpo = request.get_json(force=True) or {}
         try:
-            resultado = guardar_cambios_rejilla(ruta, datos, cuerpo.get("cambios", []))
+            resultado = guardar_cambios_rejilla_db(ruta, datos, cuerpo.get("cambios", []))
         except ErrorEdicionRejilla as exc:
             return _error("No se ha guardado nada:\n" + "\n".join(f"- {e}" for e in exc.errores))
-        except PermissionError:
+        except (PermissionError, sqlite3.OperationalError):
             return _error(_MENSAJE_EXCEL_ABIERTO, 409)
         estado.cargar(ruta)
         return jsonify(resultado)
@@ -544,10 +551,10 @@ def crear_app() -> Flask:
     def api_plazas_dia_get():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, _ = ctx
         turnos = []
-        for tt in sorted((t for t in datos.turnos.values() if t.fila_ini is not None), key=lambda t: t.fila_ini):
+        for tt in datos.turnos.values():
             turnos.append({
                 "turno": tt.turno,
                 "sexo_req": tt.sexo_req,
@@ -582,16 +589,16 @@ def crear_app() -> Flask:
     def api_plazas_dia_post():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         if _generando():
             return _error("Hay una generación en curso: espera a que termine.", 409)
         datos, ruta = ctx
         cuerpo = request.get_json(force=True) or {}
         try:
-            resultado = guardar_plazas(ruta, datos, cuerpo.get("cambios", []), hacer_copia_seguridad)
+            resultado = guardar_plazas_db(ruta, datos, cuerpo.get("cambios", []))
         except ErrorPlazas as exc:
             return _error("No se ha guardado nada:\n" + "\n".join(f"- {e}" for e in exc.errores))
-        except PermissionError:
+        except (PermissionError, sqlite3.OperationalError):
             return _error(_MENSAJE_EXCEL_ABIERTO, 409)
         estado.cargar(ruta)
         return jsonify({**resultado, "filas_añadidas": resultado["filas_añadidas"]})
@@ -612,7 +619,7 @@ def crear_app() -> Flask:
     def api_generar():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         _, ruta = ctx
         cuerpo = request.get_json(force=True) or {}
         try:
@@ -628,7 +635,7 @@ def crear_app() -> Flask:
                 return _error("Ya hay una generación en curso", 409)
             estado.fijar_desde(desde)
             trabajo = {
-                "estado": "corriendo", "fase": "Leyendo el Excel…", "desde": estado.desde(), "hasta": hasta,
+                "estado": "corriendo", "fase": "Leyendo los datos…", "desde": estado.desde(), "hasta": hasta,
                 "inicio": time.time(), "fin": None, "avisos": [], "errores": [],
             }
             estado.set("trabajo", trabajo)
@@ -668,11 +675,11 @@ def crear_app() -> Flask:
             return _error("No hay ninguna propuesta lista para aplicar", 409)
         _, ruta = ctx
         try:
-            # Copia de seguridad automática dentro de escribir_solucion.
-            escribir_solucion(ruta, trabajo["datos"], trabajo["solucion"], dry_run=False)
+            hacer_copia_seguridad(ruta)
+            escribir_solucion_db(ruta, trabajo["datos"], trabajo["solucion"])
             # Todo lo anterior a este día queda congelado también para la CLI.
             guardar_config_valores(ruta, {"DIA_REOPTIMIZACION": trabajo["desde"]})
-        except PermissionError:
+        except (PermissionError, sqlite3.OperationalError):
             return _error(_MENSAJE_EXCEL_ABIERTO, 409)
         except ValueError as exc:
             return _error(str(exc))
@@ -693,9 +700,17 @@ def crear_app() -> Flask:
     def api_descargar():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         _, ruta = ctx
-        return send_file(ruta, as_attachment=True, download_name=Path(ruta).name)
+        # El Excel se genera al momento a partir de la base de datos (no hay ningún Excel guardado).
+        directorio = tempfile.mkdtemp(prefix="turnos_excel_")
+        try:
+            destino = exportar_excel(ruta, str(Path(directorio) / "campamento.xlsx"))
+            contenido = Path(destino).read_bytes()
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+        return send_file(io.BytesIO(contenido), as_attachment=True, download_name=Path(ruta).stem + ".xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     # ------------------------------------------------------------------
     # Informe
@@ -704,7 +719,7 @@ def crear_app() -> Flask:
     def api_informe():
         ctx = _con_datos()
         if ctx is None:
-            return _error("No hay Excel cargado")
+            return _error("No hay ningún campamento cargado")
         datos, _ = ctx
         solucion = estado.get("solucion")
         if solucion is None or solucion.estado == "infactible":
@@ -747,7 +762,13 @@ def crear_app() -> Flask:
     return app
 
 
-def main():
+def main(argv=None):
+    """`python -m turnos.webapp [campamento.db | libro.xlsx]`: sin argumento, abre la base de datos más reciente."""
+    import sys
+
+    args = sys.argv[1:] if argv is None else argv
+    if args:
+        estado._estado["ruta"] = args[0]
     app = crear_app()
     print("Interfaz web en http://127.0.0.1:5000  (Ctrl+C para salir)")
     app.run(host="127.0.0.1", port=5000, debug=False)
