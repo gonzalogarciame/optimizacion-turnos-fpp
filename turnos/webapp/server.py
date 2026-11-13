@@ -307,6 +307,11 @@ def crear_app() -> Flask:
         datos, ruta = ctx
         return jsonify({
             "dias": datos.dias,
+            "dias_info": info_dias(datos),
+            "monitores": {
+                m.nombre: {"sexo": m.sexo, "grupo": m.grupo, "descansa": bool(m.permite_descanso)}
+                for m in datos.monitores.values()
+            },
             "filas": _filas_json(leer_disponibilidad_df(ruta, datos.dias)),
         })
 
@@ -315,11 +320,26 @@ def crear_app() -> Flask:
         ctx = _con_datos()
         if ctx is None:
             return _error("No hay Excel cargado")
+        if _generando():
+            return _error("Hay una generación en curso: espera a que termine para guardar.", 409)
         datos, ruta = ctx
         df = _df_desde_peticion()
-        guardar_disponibilidad_df(ruta, df, datos.dias)
+        # Solo valen D (disponible), X (no viene) y R (descanso impuesto).
+        malos = [
+            f"{fila['NOMBRE']}, día {dia}: '{fila.get(str(dia))}'"
+            for fila in df.to_dict(orient="records")
+            for dia in datos.dias
+            if str(fila.get(str(dia), "D")).strip().upper() not in ("D", "X", "R")
+        ]
+        if malos:
+            return _error("Códigos no válidos (solo D, X o R):\n" + "\n".join(malos[:10]))
+        try:
+            hacer_copia_seguridad(ruta)
+            guardar_disponibilidad_df(ruta, df, datos.dias)
+        except PermissionError:
+            return _error(_MENSAJE_EXCEL_ABIERTO, 409)
         estado.cargar(ruta)
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "filas": len(df)})
 
     # ------------------------------------------------------------------
     # Turnos (tipos + plazas por día + alta de turno nuevo)

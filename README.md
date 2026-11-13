@@ -135,6 +135,11 @@ y los días en columnas, leída directamente de la hoja `TURNOS`:
   hasta pulsar «Aplicar y guardar», que hace copia de seguridad y deja
   `DIA_REOPTIMIZACION` de `CONFIG` en ese día (así la CLI también respeta lo
   congelado). «Descartar» no toca el Excel.
+- **Disponibilidad:** tabla de colores (verde viene, rojo no viene, amarillo descanso
+  impuesto). Se elige un pincel y se pinta con clic o arrastrando; clic en un nombre
+  pinta su fila y clic en un día pinta la columna (solo los monitores filtrados).
+  Buscador y filtros (grupo, «solo los que faltan algún día»). Guarda con copia de
+  seguridad y avisa si a un monitor de fin de semana se le impone descanso.
 - **Plazas por día (🧩):** cuántas plazas hay que cubrir cada día en cada turno y
   hasta cuántas personas *acepta* como máximo. Un turno con 0 necesarias «no
   existe» ese día (llegada, salida). Se abre desde el botón de arriba, desde el

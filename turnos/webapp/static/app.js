@@ -258,7 +258,7 @@ async function refrescarResumen() {
 
 function configurarBarraSuperior() {
   document.getElementById("btn-cargar").addEventListener("click", async () => {
-    if (!confirmarSalidaRejilla()) return;
+    if (!confirmarSalida()) return;
     const ruta = document.getElementById("input-ruta").value;
     const estadoSpan = document.getElementById("estado-carga");
     estadoSpan.textContent = "Cargando…";
@@ -303,13 +303,14 @@ async function dibujarPagina() {
   }
 }
 
-function confirmarSalidaRejilla() {
-  return !(paginaActual === "rejilla" && typeof rejillaTieneCambios === "function" && rejillaTieneCambios())
-    || confirm("Tienes cambios sin guardar en la rejilla. ¿Salir sin guardarlos?");
+function confirmarSalida() {
+  const sucio = (paginaActual === "rejilla" && typeof rejillaTieneCambios === "function" && rejillaTieneCambios())
+    || (paginaActual === "disponibilidad" && typeof disponibilidadTieneCambios === "function" && disponibilidadTieneCambios());
+  return !sucio || confirm("Tienes cambios sin guardar en esta pantalla. ¿Salir sin guardarlos?");
 }
 
 function irA(pagina) {
-  if (pagina !== paginaActual && !confirmarSalidaRejilla()) return;
+  if (pagina !== paginaActual && !confirmarSalida()) return;
   paginaActual = pagina;
   dibujarNav();
   dibujarPagina();
@@ -348,38 +349,6 @@ async function renderMonitores(cont) {
       const resp = await api("POST", "/api/monitores", { filas: grid.leerFilas() });
       (resp.avisos || []).forEach((a) => insertarBanner(zona, "aviso", a));
       insertarBanner(zona, "exito", "Monitores guardados.");
-      await refrescarResumen();
-    } catch (e) {
-      insertarBanner(zona, "error", e.message);
-    }
-  });
-}
-
-// ---------------------------------------------------------------------
-// Página: Disponibilidad
-// ---------------------------------------------------------------------
-async function renderDisponibilidad(cont) {
-  const { dias, filas } = await api("GET", "/api/disponibilidad");
-  cont.innerHTML = `
-    <h2>Disponibilidad</h2>
-    <p class="subtitulo">D = disponible, X = ausente, R = descanso impuesto.</p>
-    <div id="zona-grid"></div>
-    <button id="btn-guardar" style="margin-top:12px;">Guardar disponibilidad en Excel</button>
-    <div id="zona-mensajes"></div>
-  `;
-  const columnas = [
-    { clave: "NOMBRE", etiqueta: "Nombre", tipo: "texto", editable: false, fija: true },
-    ...dias.map((d) => ({ clave: String(d), etiqueta: String(d), tipo: "select", opciones: ["D", "X", "R"] })),
-  ];
-  const grid = crearGrid(columnas, filas, { permitirFilas: false });
-  cont.querySelector("#zona-grid").appendChild(grid.elemento);
-
-  cont.querySelector("#btn-guardar").addEventListener("click", async () => {
-    const zona = cont.querySelector("#zona-mensajes");
-    zona.innerHTML = "";
-    try {
-      await api("POST", "/api/disponibilidad", { filas: grid.leerFilas() });
-      insertarBanner(zona, "exito", "Disponibilidad guardada.");
       await refrescarResumen();
     } catch (e) {
       insertarBanner(zona, "error", e.message);
