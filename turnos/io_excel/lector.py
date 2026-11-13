@@ -271,6 +271,8 @@ class LectorExcel:
             if not turno:
                 continue
             if turno not in turnos:
+                if self._es_nota_al_pie(ws, fila, mapa_dias, dias):
+                    continue
                 self._avisos.append(
                     f"PLAZAS_POR_DIA!A{fila}: turno '{turno}' no existe en TIPOS_TURNO; se ignora"
                 )
@@ -292,6 +294,13 @@ class LectorExcel:
                 )
         return plazas
 
+    @staticmethod
+    def _es_nota_al_pie(ws: Worksheet, fila: int, mapa_dias, dias) -> bool:
+        """Fila de texto suelto (una nota) en la columna A, sin ninguna cifra en las columnas de los días."""
+        return all(
+            ws.cell(fila, mapa_dias[d]).value in (None, "") for d in dias if d in mapa_dias
+        )
+
     def _leer_plazas_max(self, wb, turnos, plazas, dias) -> Dict[Tuple[str, int], int]:
         """Hoja opcional PLAZAS_MAX_POR_DIA: máximo de personas que acepta un turno un día.
 
@@ -310,6 +319,8 @@ class LectorExcel:
             if not turno:
                 continue
             if turno not in turnos:
+                if self._es_nota_al_pie(ws, fila, mapa_dias, dias):
+                    continue
                 self._avisos.append(f"PLAZAS_MAX_POR_DIA!A{fila}: turno '{turno}' no existe en TIPOS_TURNO; se ignora")
                 continue
             for dia in dias:
@@ -619,10 +630,10 @@ class LectorExcel:
             if len(forzados_sin_sitio) > capacidad_libre:
                 datos.finde_forzar_blanda = True
                 datos.avisos.append(
-                    f"Día {dia}: {len(forzados_sin_sitio)} monitores de fin de semana sin "
-                    f"PERMITE_DESCANSO obligados a trabajar ({', '.join(forzados_sin_sitio)}) "
-                    f"pero solo quedan {capacidad_libre} plazas libres tras las fijaciones ya "
-                    f"hechas ese día; 'finde_sin_descanso' se degrada a blanda para ellos."
+                    f"Día {dia}: no hay sitio para {len(forzados_sin_sitio)} monitor(es) de fin de semana "
+                    f"({', '.join(forzados_sin_sitio)}): quedan {capacidad_libre} plazas libres. "
+                    f"Tendrán que descansar. Para evitarlo, haz que algún turno acepte más gente ese día "
+                    f"(hoja PLAZAS_MAX_POR_DIA)."
                 )
 
 

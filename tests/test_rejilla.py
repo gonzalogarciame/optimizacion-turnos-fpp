@@ -128,3 +128,22 @@ def test_cambios_invalidos_no_tocan_el_fichero(excel):
     assert len(exc.value.errores) == 4
     assert _huella(ruta) == antes  # ni siquiera el cambio válido se escribió
     assert not list(Path(ruta).parent.glob("*_backup_*"))
+
+
+def test_notas_al_pie_de_plazas_no_son_turnos(excel):
+    """Una nota de texto bajo PLAZAS_POR_DIA no genera aviso; un turno inventado con cifras, sí."""
+    ruta, datos = excel
+    wb = openpyxl.load_workbook(ruta)
+    ws = wb["PLAZAS_POR_DIA"]
+    fila = ws.max_row + 2
+    ws.cell(fila, 1).value = "Nota: los dias de llegada y salida llevan menos turnos."
+    wb.save(ruta)
+    dia0 = datos.dias[0]
+    assert not [a for a in leer_datos(ruta, desde=dia0).avisos if "no existe en TIPOS_TURNO" in a]
+
+    wb = openpyxl.load_workbook(ruta)
+    ws = wb["PLAZAS_POR_DIA"]
+    ws.cell(fila + 1, 1).value = "turno_inventado"
+    ws.cell(fila + 1, 2).value = 3
+    wb.save(ruta)
+    assert [a for a in leer_datos(ruta, desde=dia0).avisos if "turno_inventado" in a]
