@@ -13,7 +13,7 @@ turnos en la Fundación puede usarlo, mientras su Excel siga la misma
 estructura de hojas que se describe más abajo.
 
 - CLI: `python -m turnos validar|optimizar --excel datos/<campamento>/turnos.xlsx`
-- Interfaz web local: `python -m turnos.webapp`, luego abrir
+- Interfaz web local: `python -m turnos.webapp` (trabaja sobre la base de datos del campamento), luego abrir
   `http://127.0.0.1:5000` en el navegador. Es una tabla turnos × días donde
   se edita cada casilla con un selector de monitores, también en días ya
   pasados, y desde la que se lanza el optimizador a partir de un día
@@ -102,11 +102,22 @@ python -m turnos optimizar --excel datos/2026-quincena2-18al30jul/turnos.xlsx --
 python -m turnos optimizar --excel datos/2026-quincena2-18al30jul/turnos.xlsx --dry-run
 ```
 
-### Base de datos en vez de Excel (en transición)
+### Base de datos en vez de Excel
 
 El objetivo es que el Excel deje de ser necesario: los datos de cada campamento
 viven en **un único fichero SQLite** (`campamento.db`), que no necesita
-instalar nada ni conexión a internet. Hoy ya se puede:
+instalar nada ni conexión a internet. **La interfaz web ya trabaja sobre la base
+de datos**: se edita todo desde el navegador y el Excel solo hace falta para
+importar datos antiguos o para exportar una copia. Cada guardado hace antes
+una copia de seguridad en la carpeta `copias/` (se conservan las últimas 40).
+
+```bash
+# Abrir la web: sin argumento usa la base de datos más reciente de datos/;
+# si le pasas un Excel, lo importa a un .db con el mismo nombre y trabaja con ese
+python -m turnos.webapp [datos/<campamento>/campamento.db | libro.xlsx]
+```
+
+Desde la línea de comandos:
 
 ```bash
 # Copiar un Excel a una base de datos (el Excel no se modifica)
@@ -120,9 +131,10 @@ python -m turnos optimizar --db datos/2026-quincena1-1al13ago/campamento.db --de
 El optimizador recibe exactamente los mismos datos desde la base que desde el
 Excel (hay un test que lo comprueba). Lo generado y guardado vale como pasado
 al generar los días siguientes. Esquema y correspondencia con las hojas del
-Excel: `turnos/almacen/esquema.py`. Las bases de datos (`*.db`) quedan fuera de
-git porque contienen nombres reales. La interfaz web todavía trabaja con el
-Excel; pasar la web a la base de datos es el siguiente paso.
+Excel: `turnos/almacen/esquema.py`. El botón «Excel» de la web (o
+`turnos/almacen/exportar.py`) genera un libro con el diseño de siempre, que se
+puede volver a importar. Las bases de datos (`*.db`) quedan fuera de git porque
+contienen nombres reales.
 
 Interfaz interactiva (ver y editar la rejilla, monitores, disponibilidad, y
 lanzar la optimización desde el navegador):
@@ -251,6 +263,10 @@ turnos/
 ├── almacen/                # la misma información en SQLite (sustituye al Excel)
 │   ├── esquema.py             # tablas; correspondencia con las hojas
 │   ├── importar.py            # Excel -> base de datos
+│   ├── exportar.py            # base de datos -> Excel (compartir, imprimir)
+│   ├── copias.py              # copias de seguridad en copias/
+│   ├── rejilla.py             # la rejilla leída y editada celda a celda (lo que usa la web)
+│   ├── edicion.py             # monitores, disponibilidad, turnos, plazas, dependientes, restricciones
 │   ├── cargar.py              # base de datos -> Datos (igual que io_excel/lector.py)
 │   └── guardar.py             # Solucion -> base de datos
 ├── io_excel/
@@ -514,7 +530,8 @@ python -m pytest tests/
   sintéticos (sin Excel) y comprueba que las restricciones se generan bien.
 - `tests/test_rejilla.py` — lectura/escritura casilla a casilla de la rejilla web.
 - `tests/test_hasta.py` — generar solo unos días (horizonte recortado).
-- `tests/test_almacen.py` — base de datos: da los mismos datos que el Excel, guarda soluciones y fijados.
+- `tests/test_almacen.py` — base de datos: da los mismos datos que el Excel, guarda soluciones y fijados, exporta a Excel y vuelve.
+- `tests/test_webapp_db.py` — la web sobre la base de datos de principio a fin (editar, plazas, altas, generar y aplicar).
 - `tests/test_plazas_extra.py` — turnos que aceptan más gente (modelo sintético y
   Excel), y que ampliar la rejilla no pierde ni mueve ningún dato.
 - `tests/test_reoptimizacion.py` — comprueba, sobre el fixture congelado
