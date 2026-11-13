@@ -84,9 +84,8 @@ def guardar_monitores_df(ruta: str, df: pd.DataFrame, dias: Iterable[int]) -> li
             if col not in (cab.get("DIAS_PRESENTE", -1), cab.get("DISPONIBILIDAD_TXT", -1)):
                 ws.cell(fila, col).value = None
 
-    for i, fila_datos in enumerate(df.itertuples(index=False)):
+    for i, d in enumerate(df.to_dict(orient="records")):
         fila = i + 2
-        d = fila_datos._asdict()
         ws.cell(fila, cab["NOMBRE"]).value = d.get("NOMBRE")
         ws.cell(fila, cab["SEXO"]).value = d.get("SEXO")
         if "GRUPO" in cab:
@@ -168,8 +167,7 @@ def guardar_disponibilidad_df(ruta: str, df: pd.DataFrame, dias: Iterable[int]) 
         if nombre:
             filas_por_nombre[normalizar(nombre)] = fila
 
-    for fila_datos in df.itertuples(index=False):
-        d = fila_datos._asdict()
+    for d in df.to_dict(orient="records"):  # no itertuples(): renombra columnas como "18" a "_1"
         nombre = d["NOMBRE"]
         fila = filas_por_nombre.get(normalizar(nombre))
         if fila is None:
@@ -221,8 +219,7 @@ def guardar_restricciones_df(ruta: str, df: pd.DataFrame) -> None:
         if nombre:
             filas_por_nombre[nombre] = fila
 
-    for fila_datos in df.itertuples(index=False):
-        d = fila_datos._asdict()
+    for d in df.to_dict(orient="records"):  # no itertuples(): renombra columnas como "18" a "_1"
         fila = filas_por_nombre.get(_texto(d.get("NOMBRE")))
         if fila is None:
             continue  # nombre desconocido: no hay código detrás, se ignora
@@ -326,8 +323,7 @@ def guardar_tipos_turno_df(ruta: str, df: pd.DataFrame) -> None:
         if turno:
             filas_por_turno[turno] = fila
 
-    for fila_datos in df.itertuples(index=False):
-        d = fila_datos._asdict()
+    for d in df.to_dict(orient="records"):  # no itertuples(): renombra columnas como "18" a "_1"
         fila = filas_por_turno.get(_texto(d.get("TURNO")))
         if fila is None:
             continue
@@ -386,8 +382,7 @@ def guardar_plazas_por_dia_df(ruta: str, df: pd.DataFrame, dias: Iterable[int]) 
         if turno:
             filas_hoja[turno] = fila
 
-    for fila_datos in df.itertuples(index=False):
-        d = fila_datos._asdict()
+    for d in df.to_dict(orient="records"):  # no itertuples(): renombra columnas como "18" a "_1"
         turno = _texto(d.get("TURNO"))
         fila = filas_hoja.get(turno)
         if fila is None:
@@ -532,8 +527,7 @@ def guardar_dependientes_df(ruta: str, df: pd.DataFrame) -> None:
         if acampado:
             filas_por_acampado[acampado] = fila
 
-    for fila_datos in df.itertuples(index=False):
-        d = fila_datos._asdict()
+    for d in df.to_dict(orient="records"):  # no itertuples(): renombra columnas como "18" a "_1"
         fila = filas_por_acampado.get(_texto(d.get("ACAMPADO")))
         if fila is None:
             continue
