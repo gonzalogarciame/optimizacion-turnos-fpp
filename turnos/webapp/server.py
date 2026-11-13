@@ -139,7 +139,7 @@ def _terminar(trabajo: dict, estado_final: str, **campos) -> None:
     trabajo["estado"] = estado_final
 
 
-def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool) -> None:
+def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool, hasta: int = None) -> None:
     """Valida, construye el modelo, resuelve y prepara la vista previa.
 
     Corre en un hilo aparte para que la pantalla pueda mostrar el progreso.
@@ -147,7 +147,7 @@ def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool) 
     """
     try:
         try:
-            datos = leer_datos(ruta, desde=desde)
+            datos = leer_datos(ruta, desde=desde, hasta=hasta)
         except (ErrorLecturaExcel, ErrorNombreNoReconocido, ValueError) as exc:
             mensaje = str(exc).replace(
                 "Corrige la rejilla o baja DIA_REOPTIMIZACION.",
@@ -618,18 +618,22 @@ def crear_app() -> Flask:
             desde = int(cuerpo.get("desde"))
         except (TypeError, ValueError):
             return _error("Indica el día desde el que generar")
+        try:
+            hasta = int(cuerpo["hasta"]) if cuerpo.get("hasta") not in (None, "") else None
+        except (TypeError, ValueError):
+            return _error("El último día a generar no es válido")
         with estado.cerrojo:
             if _generando():
                 return _error("Ya hay una generación en curso", 409)
             estado.fijar_desde(desde)
             trabajo = {
-                "estado": "corriendo", "fase": "Leyendo el Excel…", "desde": estado.desde(),
+                "estado": "corriendo", "fase": "Leyendo el Excel…", "desde": estado.desde(), "hasta": hasta,
                 "inicio": time.time(), "fin": None, "avisos": [], "errores": [],
             }
             estado.set("trabajo", trabajo)
         hilo = threading.Thread(
             target=_ejecutar_generacion,
-            args=(trabajo, ruta, estado.desde(), bool(cuerpo.get("dos_fases"))),
+            args=(trabajo, ruta, estado.desde(), bool(cuerpo.get("dos_fases")), hasta),
             daemon=True,
         )
         hilo.start()
@@ -642,7 +646,7 @@ def crear_app() -> Flask:
             return jsonify({"estado": "ninguno"})
         fin = trabajo["fin"] or time.time()
         publico = {k: trabajo.get(k) for k in (
-            "estado", "fase", "desde", "avisos", "errores", "mensaje", "diagnostico", "resumen")}
+            "estado", "fase", "desde", "hasta", "avisos", "errores", "mensaje", "diagnostico", "resumen")}
         publico["segundos"] = round(fin - trabajo["inicio"], 1)
         return jsonify(publico)
 

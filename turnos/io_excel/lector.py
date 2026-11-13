@@ -12,6 +12,7 @@ celda exacta (no se ignora en silencio).
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 import openpyxl
@@ -78,9 +79,10 @@ def _mapa_dias_por_columna(ws: Worksheet, fila_cabecera: int, col_ini: int, col_
 
 
 class LectorExcel:
-    def __init__(self, ruta: str, desde: int = None):
+    def __init__(self, ruta: str, desde: int = None, hasta: int = None):
         self.ruta = ruta
         self.desde = desde
+        self.hasta = hasta
         self.wb = openpyxl.load_workbook(ruta, data_only=False)
         self._avisos: List[str] = []
 
@@ -89,6 +91,13 @@ class LectorExcel:
         wb = self.wb
 
         cfg = leer_config(wb["CONFIG"])
+        if self.hasta is not None:
+            # Horizonte recortado: solo se generan los días [desde, hasta]; los posteriores no se tocan.
+            if not (cfg.dia_inicio <= self.hasta <= cfg.dia_fin):
+                raise ValueError(f"El último día a generar ({self.hasta}) debe estar entre {cfg.dia_inicio} y {cfg.dia_fin}")
+            if self.desde is not None and self.hasta < self.desde:
+                raise ValueError(f"El último día a generar ({self.hasta}) no puede ser anterior al primero ({self.desde})")
+            cfg = replace(cfg, dia_fin=self.hasta)
         if self.desde is not None:
             from ..config import sobrescribir_dia_reoptimizacion
 
@@ -109,6 +118,9 @@ class LectorExcel:
             wb["ASIG_DEPENDIENTE"], dependientes, resolver, dias
         )
         fijaciones = self._leer_fijaciones(wb["FIJACIONES"], resolver, turnos)
+        if self.hasta is not None:
+            # Lo fijado para días que no se generan no entra en el modelo (sigue escrito en el Excel).
+            fijaciones = [f for f in fijaciones if f.dia <= self.hasta]
         restricciones = self._leer_restricciones(wb["RESTRICCIONES"])
 
         historico_x, historico_r, fijaciones_amarillas = self._leer_turnos_grid(
@@ -637,5 +649,6 @@ class LectorExcel:
                 )
 
 
-def leer_datos(ruta: str, desde: int = None) -> Datos:
-    return LectorExcel(ruta, desde=desde).leer()
+def leer_datos(ruta: str, desde: int = None, hasta: int = None) -> Datos:
+    """`hasta` recorta el horizonte (genera solo los días desde..hasta); None = hasta DIA_FIN."""
+    return LectorExcel(ruta, desde=desde, hasta=hasta).leer()

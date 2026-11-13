@@ -135,6 +135,8 @@ y los días en columnas, leída directamente de la hoja `TURNOS`:
   hasta pulsar «Aplicar y guardar», que hace copia de seguridad y deja
   `DIA_REOPTIMIZACION` de `CONFIG` en ese día (así la CLI también respeta lo
   congelado). «Descartar» no toca el Excel.
+  El selector **Días** limita cuántos días se generan (p. ej. 3 días desde el 5 = 5, 6 y 7);
+  los posteriores no se tocan y no entran en el modelo.
 - **Disponibilidad:** tabla de colores (verde viene, rojo no viene, amarillo descanso
   impuesto). Se elige un pincel y se pinta con clic o arrastrando; clic en un nombre
   pinta su fila y clic en un día pinta la columna (solo los monitores filtrados).
@@ -488,6 +490,7 @@ python -m pytest tests/
 - `tests/test_construir_sintetico.py` — construye el modelo con datos
   sintéticos (sin Excel) y comprueba que las restricciones se generan bien.
 - `tests/test_rejilla.py` — lectura/escritura casilla a casilla de la rejilla web.
+- `tests/test_hasta.py` — generar solo unos días (horizonte recortado).
 - `tests/test_plazas_extra.py` — turnos que aceptan más gente (modelo sintético y
   Excel), y que ampliar la rejilla no pierde ni mueve ningún dato.
 - `tests/test_reoptimizacion.py` — comprueba, sobre el fixture congelado

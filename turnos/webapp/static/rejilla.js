@@ -29,6 +29,7 @@ const REJ = {
   resumenes: new Map(),   // "seccion|dia" -> <td> del resumen de sección
   chipsSin: new Map(),    // dia -> <button> de "sin puesto"
   desde: null,
+  numDias: null,          // cuántos días generar desde `desde` (null = todos hasta el final)
   plegadas: new Set(["descanso"]),
   deshacer: [],
   modo: "edicion",        // "edicion" | "propuesta"
@@ -585,13 +586,13 @@ function dibujarBarra() {
     b.className = "barra propuesta";
     b.innerHTML = `
       <div class="prop-info">
-        <div class="prop-titulo">Propuesta del optimizador · días ${t.desde}–${d.dia_fin}</div>
+        <div class="prop-titulo">Propuesta del optimizador · días ${t.desde}–${t.hasta || d.dia_fin}</div>
         <div class="prop-datos">
           <span class="etiqueta ${faltas ? "mala" : "buena"}">${faltas ? `${r.total_falta.toFixed(0)} plaza(s) sin cubrir` : "Todos los turnos cubiertos"}</span>
           <span class="etiqueta">${esc(r.estado === "optimo" ? "Solución óptima" : r.estado || "")}</span>
           <span class="etiqueta">${r.tiempo_s != null ? r.tiempo_s.toFixed(1) + " s" : ""}</span>
         </div>
-        <div class="prop-nota">Lo resaltado en <b class="verde">verde</b> cambia respecto a lo guardado. <b>Aún no se ha escrito nada en el Excel.</b>${r.aviso_solver ? " " + esc(r.aviso_solver) : ""}</div>
+        <div class="prop-nota">Lo resaltado en <b class="verde">verde</b> cambia respecto a lo guardado. <b>Aún no se ha escrito nada en el Excel.</b>${t.hasta && t.hasta < d.dia_fin ? ` Los días ${t.hasta + 1}–${d.dia_fin} no se tocan.` : ""}${r.aviso_solver ? " " + esc(r.aviso_solver) : ""}</div>
       </div>
       <div class="barra-grupo derecha">
         <button type="button" id="btn-whatsapp" class="secundario icono">${ICONO.chat} WhatsApp</button>
@@ -610,6 +611,9 @@ function dibujarBarra() {
     <div class="barra-grupo">
       <label class="campo">Generar desde el día
         <select id="sel-desde">${opcionesDia}</select>
+      </label>
+      <label class="campo">Días
+        <select id="sel-num" title="Cuántos días genera el optimizador a partir del día elegido"></select>
       </label>
       <button type="button" id="btn-generar" title="Lanza el optimizador desde ese día. Antes de tocar el Excel te enseña una propuesta.">Generar turnos</button>
       <details class="opciones">
@@ -632,6 +636,8 @@ function dibujarBarra() {
   const sel = b.querySelector("#sel-desde");
   sel.value = String(REJ.desde);
   sel.addEventListener("change", () => cambiarDesde(Number(sel.value)));
+  b.querySelector("#sel-num").addEventListener("change", (e) => { REJ.numDias = e.target.value === "todos" ? null : Number(e.target.value); });
+  rellenarNumDias();
   b.querySelector("#btn-generar").addEventListener("click", generar);
   b.querySelector("#btn-plazas").addEventListener("click", () => abrirPlazas());
   b.querySelector("#btn-whatsapp").addEventListener("click", () => abrirWhatsApp());
@@ -869,11 +875,32 @@ function avisarFindeEnDescanso(av) {
   });
 }
 
+// Opciones del selector «Días»: de 1 al número de días que quedan desde el elegido ("todos" = hasta el final).
+function rellenarNumDias() {
+  const sel = REJ.el.barra && REJ.el.barra.querySelector("#sel-num");
+  if (!sel || !REJ.datos) return;
+  const fin = REJ.datos.dia_fin, max = fin - REJ.desde + 1;
+  sel.disabled = max < 1;
+  if (REJ.numDias != null && REJ.numDias >= max) REJ.numDias = null;
+  let html = "";
+  for (let n = 1; n < max; n++) html += `<option value="${n}">${n} día${n === 1 ? "" : "s"} (hasta el ${REJ.desde + n - 1})</option>`;
+  if (max >= 1) html += `<option value="todos">Todos (hasta el ${fin})</option>`;
+  sel.innerHTML = html;
+  sel.value = REJ.numDias == null ? "todos" : String(REJ.numDias);
+}
+
+// Último día que se va a generar según el selector.
+function hastaElegido() {
+  const fin = REJ.datos.dia_fin;
+  return REJ.numDias == null ? fin : Math.min(fin, REJ.desde + REJ.numDias - 1);
+}
+
 async function cambiarDesde(dia) {
   if (REJ.modo !== "edicion") return;
   REJ.desde = dia;
   const sel = REJ.el.barra.querySelector("#sel-desde");
   if (sel) sel.value = String(dia);
+  rellenarNumDias();
   pintarTodo();
   try { await api("POST", "/api/desde", { dia }); } catch (e) { /* solo informativo */ }
 }
@@ -924,9 +951,10 @@ async function generar() {
     if (!(await guardarCambios({ silencioso: true }))) return;
   }
   const dosFases = REJ.el.barra.querySelector("#chk-dos-fases").checked;
-  mostrarProgreso(`Generando desde el día ${REJ.desde}…`);
+  const hasta = hastaElegido();
+  mostrarProgreso(hasta === REJ.desde ? `Generando el día ${REJ.desde}…` : `Generando los días ${REJ.desde}–${hasta}…`);
   try {
-    await api("POST", "/api/generar", { desde: REJ.desde, dos_fases: dosFases });
+    await api("POST", "/api/generar", { desde: REJ.desde, hasta, dos_fases: dosFases });
   } catch (e) {
     cerrarModal();
     toast(e.message, "error");
@@ -957,7 +985,7 @@ async function revisarTrabajo() {
   let t;
   try { t = await api("GET", "/api/generar/estado"); } catch (e) { return; }
   if (t.estado === "ninguno") return;
-  if (t.estado === "corriendo") { REJ.desde = t.desde; mostrarProgreso(`Generando desde el día ${t.desde}…`); await sondearTrabajo(); }
+  if (t.estado === "corriendo") { REJ.desde = t.desde; mostrarProgreso(`Generando los días ${t.desde}–${t.hasta || REJ.datos.dia_fin}…`); await sondearTrabajo(); }
   else await finTrabajo(t);
 }
 
