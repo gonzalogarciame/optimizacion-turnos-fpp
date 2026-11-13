@@ -18,7 +18,14 @@ from typing import Dict, List, Optional, Tuple
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
-from ..config import leer_config, leer_pares_clave_valor
+from ..config import ajustar_horizonte, leer_config, leer_pares_clave_valor
+from ..modelo.derivados import (
+    calcular_dias_presente,
+    calcular_finde_forzar_blanda,
+    calcular_plazas_tope,
+    validar_historico_completo,
+)
+from ..modelo.errores import ErrorDatos
 from ..nombres import ErrorNombreNoReconocido, ResolverNombres, normalizar
 from ..modelo.datos import (
     AUSENTE,
@@ -39,7 +46,7 @@ from ..modelo.datos import (
 RGB_AMARILLO = {"FFFFE599", "FFFFFF00", "FFFFF2CC", "FFFFD966", "00FFFF00"}
 
 
-class ErrorLecturaExcel(Exception):
+class ErrorLecturaExcel(ErrorDatos):
     """Error de validación al leer el Excel: incluye la celda si aplica."""
 
 
@@ -91,17 +98,7 @@ class LectorExcel:
         wb = self.wb
 
         cfg = leer_config(wb["CONFIG"])
-        if self.hasta is not None:
-            # Horizonte recortado: solo se generan los días [desde, hasta]; los posteriores no se tocan.
-            if not (cfg.dia_inicio <= self.hasta <= cfg.dia_fin):
-                raise ValueError(f"El último día a generar ({self.hasta}) debe estar entre {cfg.dia_inicio} y {cfg.dia_fin}")
-            if self.desde is not None and self.hasta < self.desde:
-                raise ValueError(f"El último día a generar ({self.hasta}) no puede ser anterior al primero ({self.desde})")
-            cfg = replace(cfg, dia_fin=self.hasta)
-        if self.desde is not None:
-            from ..config import sobrescribir_dia_reoptimizacion
-
-            cfg = sobrescribir_dia_reoptimizacion(cfg, self.desde)
+        cfg = ajustar_horizonte(cfg, self.desde, self.hasta)
         dias = cfg.dias
 
         alias_pares = self._leer_alias(wb["ALIAS"])
@@ -127,9 +124,9 @@ class LectorExcel:
             wb["TURNOS"], turnos, dependientes, resolver, dias, cfg.dia_reoptimizacion
         )
         fijaciones = fijaciones + fijaciones_amarillas
-        plazas_tope = self._calcular_plazas_tope(plazas, historico_x, fijaciones)
+        plazas_tope = calcular_plazas_tope(plazas, historico_x, fijaciones)
 
-        dias_presente = self._calcular_dias_presente(disponibilidad, monitores, dias)
+        dias_presente = calcular_dias_presente(disponibilidad, monitores, dias)
 
         datos = Datos(
             cfg=cfg,
@@ -150,8 +147,8 @@ class LectorExcel:
             plazas_tope=plazas_tope,
         )
 
-        self._validar_historico_completo(datos)
-        self._calcular_finde_forzar_blanda(datos)
+        validar_historico_completo(datos)
+        calcular_finde_forzar_blanda(datos)
         return datos
 
     # ------------------------------------------------------------------
@@ -352,20 +349,6 @@ class LectorExcel:
                     maximos[(turno, dia)] = n
         return maximos
 
-    @staticmethod
-    def _calcular_plazas_tope(plazas, historico_x, fijaciones) -> Dict[Tuple[str, int], int]:
-        """Días en que lo ya escrito (histórico o celdas fijadas) supera las plazas.
-
-        Sin esto, una casilla de más en la rejilla haría infactible la igualdad de
-        `cobertura`; así el turno simplemente acepta esa gente ese día.
-        """
-        escritos = set(historico_x)
-        escritos |= {(f.monitor, f.turno, f.dia) for f in fijaciones if f.tipo == "OBLIGA"}
-        cuenta: Dict[Tuple[str, int], int] = {}
-        for (_, turno, dia) in escritos:
-            cuenta[(turno, dia)] = cuenta.get((turno, dia), 0) + 1
-        return {k: n for k, n in cuenta.items() if n > plazas.get(k, 0)}
-
     def _leer_dependientes(self, ws: Worksheet) -> Dict[str, Dependiente]:
         cab = {_texto(c.value).upper(): idx + 1 for idx, c in enumerate(ws[1])}
         requeridas = ["ACAMPADO", "SEXO_MONITOR_REQ", "ESFUERZO", "FILA"]
@@ -538,115 +521,6 @@ class LectorExcel:
                 # regenera siempre el sistema al escribir la solución.
 
         return historico_x, historico_r, fijaciones_amarillas
-
-    # ------------------------------------------------------------------
-    def _calcular_dias_presente(self, disponibilidad, monitores, dias) -> Dict[str, int]:
-        return {
-            m: sum(1 for d in dias if disponibilidad[(m, d)] in ("D", "R"))
-            for m in monitores
-        }
-
-    def _validar_historico_completo(self, datos: Datos) -> None:
-        """Cada monitor presente un día < D debe aparecer en x, r o y fijado.
-
-        Si falta, la hoja TURNOS no se rellenó del todo para un día que se
-        supone inmutable: abortamos con un mensaje claro en vez de fijar
-        una variable a un valor desconocido.
-        """
-        dia_reopt = datos.cfg.dia_reoptimizacion
-        # (monitor, dia) -> True si aparece en algún bloque de trabajo o descanso
-        cubiertos = set()
-        for (m, t, d) in datos.historico_x:
-            cubiertos.add((m, d))
-        for (m, d) in datos.historico_r:
-            cubiertos.add((m, d))
-        for (acampado, d), monitor in datos.asig_dependiente.items():
-            if d < dia_reopt and monitor not in (None, "", NO_PRESENTE, POR_DECIDIR):
-                cubiertos.add((monitor, d))
-
-        incompletos = []
-        for m in datos.monitores:
-            for d in datos.dias:
-                if d >= dia_reopt:
-                    continue
-                if datos.disponibilidad[(m, d)] in ("D", "R") and (m, d) not in cubiertos:
-                    incompletos.append((m, d))
-        if incompletos:
-            m, d = incompletos[0]
-            raise ErrorLecturaExcel(
-                f"TURNOS: día histórico {d} (< DIA_REOPTIMIZACION={dia_reopt}) incompleto: "
-                f"'{m}' está disponible ese día pero no aparece asignado a ningún turno, "
-                f"dependiente ni descanso en la rejilla ({len(incompletos)} casos en total). "
-                f"Corrige la rejilla o baja DIA_REOPTIMIZACION."
-            )
-
-        # Comprobar que ninguna celda de días < D fijada en dos sitios a la vez.
-        for (acampado, d), monitor in datos.asig_dependiente.items():
-            if d < dia_reopt and monitor not in (None, "", NO_PRESENTE, POR_DECIDIR):
-                if (monitor, d) in datos.historico_r:
-                    raise ErrorLecturaExcel(
-                        f"TURNOS: '{monitor}' aparece a la vez como descanso y como "
-                        f"monitor de '{acampado}' el día {d}"
-                    )
-
-    def _calcular_finde_forzar_blanda(self, datos: Datos) -> None:
-        """Detecta si algún día no hay plazas para que TODO el grupo FINDE trabaje.
-
-        Ver §5.1 'finde_sin_descanso' de las instrucciones: si la capacidad de
-        turnos + dependientes de un día es menor que el número de monitores
-        con PERMITE_DESCANSO=0 presentes ese día, la restricción "dura" haría
-        el modelo infactible por construcción. En ese caso se degrada a
-        blanda (penalización muy alta en vez de prohibición estructural).
-
-        La capacidad "libre" descuenta los huecos que ya tienen dueño fijo
-        ese día (una fijación OBLIGA de FIJACIONES/celda amarilla, o un
-        cuidador ya escrito en ASIG_DEPENDIENTE): esos huecos no están
-        disponibles para nadie más, y si el propio monitor forzado ya tiene
-        sitio asegurado ahí, tampoco cuenta como alguien "sin sitio". Sin
-        este descuento, una quincena con muchas fijaciones manuales en un
-        día concreto podría parecer que sobra capacidad cuando en realidad
-        ya está toda repartida (fue precisamente lo que pasó al fijar a
-        mano el día 18 completo: 16 turnos + 17 dependientes ya ocupados no
-        dejaban sitio para 7 monitoras de FINDE adicionales presentes ese
-        día).
-        """
-        for dia in datos.dias:
-            # Con PLAZAS_MAX_POR_DIA los turnos admiten gente de más: ese es el sitio
-            # que tienen los monitores de fin de semana para no descansar.
-            capacidad_total = sum(datos.tope(t, dia) for t in datos.turnos)
-            capacidad_total += sum(
-                1
-                for (acampado, d), v in datos.asig_dependiente.items()
-                if d == dia and v is not NO_PRESENTE
-            )
-
-            ya_con_sitio = {
-                f.monitor for f in datos.fijaciones if f.dia == dia and f.tipo == "OBLIGA"
-            }
-            ya_con_sitio |= {
-                v
-                for (acampado, d), v in datos.asig_dependiente.items()
-                if d == dia and v not in (NO_PRESENTE, POR_DECIDIR)
-            }
-
-            capacidad_libre = capacidad_total - len(ya_con_sitio)
-
-            forzados_sin_sitio = [
-                m
-                for m, mon in datos.monitores.items()
-                if not mon.permite_descanso
-                and datos.disponibilidad[(m, dia)] in ("D", "R")
-                and m not in ya_con_sitio
-            ]
-
-            if len(forzados_sin_sitio) > capacidad_libre:
-                datos.finde_forzar_blanda = True
-                datos.avisos.append(
-                    f"Día {dia}: no hay sitio para {len(forzados_sin_sitio)} monitor(es) de fin de semana "
-                    f"({', '.join(forzados_sin_sitio)}): quedan {capacidad_libre} plazas libres. "
-                    f"Tendrán que descansar. Para evitarlo, haz que algún turno acepte más gente ese día "
-                    f"(hoja PLAZAS_MAX_POR_DIA)."
-                )
 
 
 def leer_datos(ruta: str, desde: int = None, hasta: int = None) -> Datos:

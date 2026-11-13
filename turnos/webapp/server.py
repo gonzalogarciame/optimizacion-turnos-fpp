@@ -41,7 +41,8 @@ from ..io_excel.editor_datos import (
 from ..io_excel.escritor import escribir_solucion
 from ..io_excel.escritor import hacer_copia_seguridad
 from ..io_excel.estructura import ErrorPlazas, guardar_plazas
-from ..io_excel.lector import ErrorLecturaExcel, leer_datos
+from ..io_excel.lector import leer_datos
+from ..modelo.errores import ErrorDatos
 from ..io_excel.rejilla import (
     ErrorEdicionRejilla,
     guardar_cambios_rejilla,
@@ -148,7 +149,7 @@ def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool, 
     try:
         try:
             datos = leer_datos(ruta, desde=desde, hasta=hasta)
-        except (ErrorLecturaExcel, ErrorNombreNoReconocido, ValueError) as exc:
+        except (ErrorDatos, ErrorNombreNoReconocido, ValueError) as exc:
             mensaje = str(exc).replace(
                 "Corrige la rejilla o baja DIA_REOPTIMIZACION.",
                 "En la rejilla, la fila «Sin puesto» indica quién falta: colócalo en una casilla de ese día "

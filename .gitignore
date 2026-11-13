@@ -11,3 +11,8 @@ datos/practica-vacio/
 
 # Copias de seguridad que crea la app antes de cada escritura
 *_backup_*.xlsx
+
+# Bases de datos de campamentos (contienen nombres reales)
+*.db
+*.db-journal
+*.db.tmp

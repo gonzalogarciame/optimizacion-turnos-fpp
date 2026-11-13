@@ -19,7 +19,8 @@ from typing import Optional
 import openpyxl
 
 from ..config import leer_pares_clave_valor
-from ..io_excel.lector import ErrorLecturaExcel, leer_datos
+from ..io_excel.lector import leer_datos
+from ..modelo.errores import ErrorDatos
 from ..modelo.datos import Datos
 from ..nombres import ErrorNombreNoReconocido
 
@@ -51,7 +52,7 @@ def cargar(ruta: str, desde: Optional[int] = None) -> bool:
         cfg = _cfg_basica(ruta)
         dia_inicio = int(cfg["DIA_INICIO"])
         datos = leer_datos(ruta, desde=dia_inicio)
-    except (ErrorLecturaExcel, ErrorNombreNoReconocido, ValueError, KeyError, TypeError, OSError) as exc:
+    except (ErrorDatos, ErrorNombreNoReconocido, ValueError, KeyError, TypeError, OSError) as exc:
         # OSError incluye PermissionError: el Excel puede estar abierto en
         # Excel en ese mismo instante (bloqueado para lectura en Windows).
         _estado["error_carga"] = str(exc)

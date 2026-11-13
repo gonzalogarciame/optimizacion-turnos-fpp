@@ -59,8 +59,17 @@ def leer_pares_clave_valor(ws) -> Dict[str, Any]:
 
 def leer_config(ws) -> Config:
     """Construye el objeto Config a partir de la hoja CONFIG."""
-    pares = leer_pares_clave_valor(ws)
+    return config_desde_pares(leer_pares_clave_valor(ws))
 
+
+def normalizar_clave(clave: str) -> str:
+    """Clave de CONFIG en mayúsculas y con el nombre canónico del año."""
+    clave = str(clave).strip().upper()
+    return _ALIAS_CLAVE.get(clave, clave)
+
+
+def config_desde_pares(pares: Dict[str, Any]) -> Config:
+    """Construye y valida el objeto Config desde un diccionario clave -> valor (Excel o base de datos)."""
     faltantes = [c for c in _CLAVES_OBLIGATORIAS if c not in pares]
     if faltantes:
         raise ValueError(
@@ -71,7 +80,7 @@ def leer_config(ws) -> Config:
     for clave, tipo in _CLAVES_OBLIGATORIAS.items():
         crudo = pares[clave]
         try:
-            valores[clave] = tipo(crudo)
+            valores[clave] = tipo(int(crudo) if tipo is int and isinstance(crudo, float) and crudo.is_integer() else crudo)
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"CONFIG!{clave}: valor '{crudo}' no se puede interpretar como {tipo.__name__}"
@@ -110,6 +119,22 @@ def leer_config(ws) -> Config:
             "CONFIG: DIA_REOPTIMIZACION debe estar entre DIA_INICIO y DIA_FIN+1 "
             "(DIA_FIN+1 significa 'no re-optimizar nada, todo es histórico')"
         )
+    return cfg
+
+
+def ajustar_horizonte(cfg: Config, desde: int = None, hasta: int = None) -> Config:
+    """Aplica `hasta` (recorta el horizonte) y `desde` (DIA_REOPTIMIZACION) a la configuración."""
+    from dataclasses import replace
+
+    if hasta is not None:
+        # Horizonte recortado: solo se generan los días [desde, hasta]; los posteriores no se tocan.
+        if not (cfg.dia_inicio <= hasta <= cfg.dia_fin):
+            raise ValueError(f"El último día a generar ({hasta}) debe estar entre {cfg.dia_inicio} y {cfg.dia_fin}")
+        if desde is not None and hasta < desde:
+            raise ValueError(f"El último día a generar ({hasta}) no puede ser anterior al primero ({desde})")
+        cfg = replace(cfg, dia_fin=hasta)
+    if desde is not None:
+        cfg = sobrescribir_dia_reoptimizacion(cfg, desde)
     return cfg
 
 

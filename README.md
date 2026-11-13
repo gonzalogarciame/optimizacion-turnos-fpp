@@ -102,6 +102,28 @@ python -m turnos optimizar --excel datos/2026-quincena2-18al30jul/turnos.xlsx --
 python -m turnos optimizar --excel datos/2026-quincena2-18al30jul/turnos.xlsx --dry-run
 ```
 
+### Base de datos en vez de Excel (en transición)
+
+El objetivo es que el Excel deje de ser necesario: los datos de cada campamento
+viven en **un único fichero SQLite** (`campamento.db`), que no necesita
+instalar nada ni conexión a internet. Hoy ya se puede:
+
+```bash
+# Copiar un Excel a una base de datos (el Excel no se modifica)
+python -m turnos importar --excel datos/2026-quincena1-1al13ago/turnos.xlsx --db datos/2026-quincena1-1al13ago/campamento.db
+
+# Validar y optimizar leyendo y guardando en la base de datos (--desde/--hasta como con el Excel)
+python -m turnos validar   --db datos/2026-quincena1-1al13ago/campamento.db
+python -m turnos optimizar --db datos/2026-quincena1-1al13ago/campamento.db --desde 1 --hasta 3
+```
+
+El optimizador recibe exactamente los mismos datos desde la base que desde el
+Excel (hay un test que lo comprueba). Lo generado y guardado vale como pasado
+al generar los días siguientes. Esquema y correspondencia con las hojas del
+Excel: `turnos/almacen/esquema.py`. Las bases de datos (`*.db`) quedan fuera de
+git porque contienen nombres reales. La interfaz web todavía trabaja con el
+Excel; pasar la web a la base de datos es el siguiente paso.
+
 Interfaz interactiva (ver y editar la rejilla, monitores, disponibilidad, y
 lanzar la optimización desde el navegador):
 
@@ -226,6 +248,11 @@ propio de ese campamento), añádela como módulo nuevo siguiendo la receta del
 turnos/
 ├── config.py              # lee CONFIG -> objeto Config (todos los pesos W_* salen de aquí)
 ├── nombres.py              # normalizar() y ResolverNombres (apodos de la hoja ALIAS)
+├── almacen/                # la misma información en SQLite (sustituye al Excel)
+│   ├── esquema.py             # tablas; correspondencia con las hojas
+│   ├── importar.py            # Excel -> base de datos
+│   ├── cargar.py              # base de datos -> Datos (igual que io_excel/lector.py)
+│   └── guardar.py             # Solucion -> base de datos
 ├── io_excel/
 │   ├── lector.py            # Excel -> Datos, validado. Aborta con la celda exacta si algo no cuadra
 │   ├── escritor.py          # Solucion -> hoja TURNOS, preservando formato/colores
@@ -234,6 +261,8 @@ turnos/
 │   └── estructura.py        # guardar plazas/PLAZAS_MAX_POR_DIA y ampliar bloques de TURNOS (inserta filas)
 ├── modelo/
 │   ├── datos.py              # dataclasses: Config, Monitor, TipoTurno, Dependiente, Datos, Solucion
+│   ├── derivados.py          # cálculos y comprobaciones comunes a Excel y base de datos (histórico, fin de semana...)
+│   ├── errores.py            # ErrorDatos
 │   ├── construir.py          # Datos -> ConcreteModel de Pyomo (índices válidos + aplica RESTRICCIONES)
 │   ├── objetivo.py           # suma ponderada de las penalizaciones registradas por los módulos
 │   └── restricciones/        # una restricción = un módulo enchufable (ver §7.1)
@@ -485,6 +514,7 @@ python -m pytest tests/
   sintéticos (sin Excel) y comprueba que las restricciones se generan bien.
 - `tests/test_rejilla.py` — lectura/escritura casilla a casilla de la rejilla web.
 - `tests/test_hasta.py` — generar solo unos días (horizonte recortado).
+- `tests/test_almacen.py` — base de datos: da los mismos datos que el Excel, guarda soluciones y fijados.
 - `tests/test_plazas_extra.py` — turnos que aceptan más gente (modelo sintético y
   Excel), y que ampliar la rejilla no pierde ni mueve ningún dato.
 - `tests/test_reoptimizacion.py` — comprueba, sobre el fixture congelado
