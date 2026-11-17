@@ -16,3 +16,6 @@ datos/practica-vacio/
 *.db
 *.db-journal
 *.db.tmp
+
+# Datos reales de los campamentos (nombres de monitores y acampados): nunca a git
+datos/

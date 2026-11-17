@@ -30,6 +30,10 @@ const REJ = {
   chipsSin: new Map(),    // dia -> <button> de "sin puesto"
   desde: null,
   numDias: null,          // cuántos días generar desde `desde` (null = todos hasta el final)
+  reglas: new Map(),      // clave de casilla -> avisos de reglas incumplidas que la afectan
+  avisosReglas: [],       // todos los avisos de reglas (los devuelve /api/rejilla/reglas)
+  firmasReglas: null,     // avisos ya conocidos (para avisar solo de los nuevos); null = aún sin revisar
+  seqReglas: 0,
   plegadas: new Set(["descanso"]),
   deshacer: [],
   modo: "edicion",        // "edicion" | "propuesta"
@@ -102,6 +106,9 @@ function indexar(datos) {
     });
   });
   REJ.deshacer = [];
+  REJ.reglas = new Map();
+  REJ.avisosReglas = [];
+  REJ.firmasReglas = null;
 }
 
 async function cargarRejilla() {
@@ -163,6 +170,7 @@ function pintarTodo() {
   pintarResumenes();
   pintarCabeceras();
   actualizarBarra();
+  programarRevision();
 }
 
 function cambiaRespectoBase(info, c) {
@@ -211,6 +219,12 @@ function pintarCelda(key) {
     }
     if (tipo === "turno" && c.f && dia >= REJ.desde) { cls.push("fijada"); avisos.push("Fijada: el optimizador la respeta"); }
   }
+  // Reglas incumplidas (las que no tienen ya su propia marca en la casilla)
+  (REJ.reglas.get(key) || []).filter((a) => !REGLAS_YA_MARCADAS.has(a.regla)).forEach((a) => {
+    cls.push("aviso-regla");
+    if (a.nivel !== "regla") cls.push("suave");
+    avisos.push(`${a.nivel === "regla" ? "⚠" : "💡"} ${a.mensaje}`);
+  });
   if (REJ.modo === "edicion" && esEditada(key)) cls.push("editada");
   if (REJ.modo === "propuesta" && dia >= REJ.desde && cambiaRespectoBase(info, c)) cls.push("cambia");
   if (REJ.modo === "propuesta" || cls.includes("sinplaza")) cls.push("solo-lectura");
@@ -828,6 +842,7 @@ function actualizarBarra() {
   const av = REJ.el.avisos;
   av.innerHTML = "";
   avisarFindeEnDescanso(av);
+  avisarReglas(av);
   if (REJ.modo !== "edicion") return;
   const incompletos = REJ.datos.dias
     .filter(({ dia }) => dia < REJ.desde && ((REJ.sinAsignar.get(dia) || []).length || [...REJ.conflictos].some((k) => REJ.info.get(k).dia === dia)))
@@ -840,6 +855,98 @@ function actualizarBarra() {
   }
   const nConf = REJ.conflictos.size;
   if (nConf) av.appendChild(alerta(`${nConf} casilla(s) con un monitor repetido el mismo día (en rojo).`, "error"));
+}
+
+// ---------------------------------------------------------------------
+// Reglas incumplidas al asignar a mano
+//
+// Tras cada cambio se manda lo que hay escrito a /api/rejilla/reglas, que devuelve un
+// aviso por cada regla activa que se incumple. Se avisa con un mensaje emergente de lo que
+// acaba de aparecer, se marcan las casillas y se deja un resumen sobre la tabla.
+// ---------------------------------------------------------------------
+// Estas reglas ya tienen su propia marca de color en la casilla (ausente, sexo, repetido, plazas...)
+const REGLAS_YA_MARCADAS = new Set(["cobertura", "un_turno_por_dia", "disponibilidad", "descanso_forzado", "sexo_turno", "sexo_dependiente", "finde_sin_descanso"]);
+let temporizadorReglas = null;
+
+function programarRevision() {
+  clearTimeout(temporizadorReglas);
+  temporizadorReglas = setTimeout(revisarReglas, 300);
+}
+
+function celdasParaRevisar() {
+  const salida = [];
+  REJ.celdas.forEach((c, key) => {
+    if (!hayNombre(c) || c.u) return;
+    const info = REJ.info.get(key);
+    const clave = info.tipo === "turno" ? info.sec.titulo : info.tipo === "dependiente" ? info.fila.etiqueta : "";
+    salida.push({ k: key, tipo: info.tipo, clave, dia: info.dia, v: c.v });
+  });
+  return salida;
+}
+
+async function revisarReglas() {
+  if (!REJ.datos) return;
+  const mi = ++REJ.seqReglas;
+  let r;
+  try { r = await api("POST", "/api/rejilla/reglas", { celdas: celdasParaRevisar() }); } catch (e) { return; }
+  if (mi !== REJ.seqReglas) return;  // llegó otra revisión más reciente
+  aplicarAvisosReglas(r.avisos);
+}
+
+function aplicarAvisosReglas(avisos) {
+  const firma = (a) => `${a.regla}|${a.mensaje}`;
+  const conocidas = REJ.firmasReglas;
+  if (conocidas !== null && REJ.modo === "edicion") {
+    const nuevos = avisos.filter((a) => a.nivel === "regla" && !conocidas.has(firma(a)));
+    nuevos.slice(0, 3).forEach((a) => toast(`⚠ ${a.mensaje}`, "aviso"));
+    if (nuevos.length > 3) toast(`…y ${nuevos.length - 3} aviso(s) más de reglas (mira el resumen sobre la tabla)`, "aviso");
+  }
+  REJ.firmasReglas = new Set(avisos.map(firma));
+
+  const antes = new Set(REJ.reglas.keys());
+  REJ.reglas = new Map();
+  avisos.forEach((a) => a.celdas.forEach((k) => {
+    if (!REJ.reglas.has(k)) REJ.reglas.set(k, []);
+    REJ.reglas.get(k).push(a);
+  }));
+  REJ.avisosReglas = avisos;
+  new Set([...antes, ...REJ.reglas.keys()]).forEach((k) => pintarCelda(k));
+  actualizarBarra();
+}
+
+function avisarReglas(av) {
+  const lista = REJ.avisosReglas;
+  if (!lista.length) return;
+  const reglas = lista.filter((a) => a.nivel === "regla").length, recom = lista.length - reglas;
+  const partes = [];
+  if (reglas) partes.push(`${reglas} regla${reglas === 1 ? "" : "s"} incumplida${reglas === 1 ? "" : "s"}`);
+  if (recom) partes.push(`${recom} recomendaci${recom === 1 ? "ón" : "ones"}`);
+  const primero = lista.find((a) => a.nivel === "regla") || lista[0];
+  av.appendChild(alerta(`${reglas ? "⚠" : "💡"} ${partes.join(" y ")}: ${esc(primero.mensaje)}`, reglas ? "error" : "", { texto: "Ver todas", accion: abrirAvisosReglas }));
+}
+
+function abrirAvisosReglas() {
+  const lista = REJ.avisosReglas;
+  const porDia = new Map();
+  lista.forEach((a, i) => { if (!porDia.has(a.dia)) porDia.set(a.dia, []); porDia.get(a.dia).push([a, i]); });
+  const modal = abrirModal(`
+    <h3>Avisos de reglas</h3>
+    <p class="muted">Lo que hay escrito incumple estas reglas. Las <b>reglas</b> el optimizador las cumple siempre; las <b>recomendaciones</b> intenta cumplirlas pero no son obligatorias.</p>
+    ${lista.length ? [...porDia.entries()].map(([dia, items]) => `
+      <h4 class="av-dia">Día ${dia}</h4>
+      <ul class="av-lista">${items.map(([a, i]) => `
+        <li><span class="etiqueta ${a.nivel === "regla" ? "mala" : ""}">${a.nivel === "regla" ? "Regla" : "Recomendación"}</span>
+        <span class="av-texto">${esc(a.mensaje)}</span>
+        <button type="button" class="secundario" data-ir="${i}">Ver casillas</button></li>`).join("")}</ul>`).join("") : `<p>Todo en orden: no hay ninguna regla incumplida.</p>`}
+    <div class="modal-pie"><button type="button" id="av-cerrar">Cerrar</button></div>`, "ancho");
+  modal.querySelector("#av-cerrar").addEventListener("click", cerrarModal);
+  modal.querySelectorAll("button[data-ir]").forEach((b) => b.addEventListener("click", () => {
+    cerrarModal();
+    const claves = lista[Number(b.dataset.ir)].celdas;
+    const tds = claves.map((k) => REJ.tds.get(k)).filter(Boolean);
+    if (tds.length) tds[0].scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+    tds.forEach((td) => { td.classList.add("resaltada"); setTimeout(() => td.classList.remove("resaltada"), 2600); });
+  }));
 }
 
 // Una línea de aviso sobre la tabla; el texto completo queda en el tooltip.

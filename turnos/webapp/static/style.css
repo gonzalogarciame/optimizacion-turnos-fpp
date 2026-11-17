@@ -451,3 +451,15 @@ label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px;
 
 /* con siete pestañas, en pantallas medianas se esconde el resumen para que quepan */
 @media (max-width: 1500px) { .resumen-texto { display: none; } }
+
+/* reglas incumplidas al asignar a mano */
+.toast.aviso { background: #b54708; }
+.tablero td.celda.aviso-regla { box-shadow: inset 0 0 0 2px #dd2590; }
+.tablero td.celda.aviso-regla.suave { box-shadow: none; outline: 2px dashed #f79009; outline-offset: -3px; }
+.tablero td.celda.resaltada { animation: resalte 0.7s ease-in-out 3; }
+@keyframes resalte { 0%, 100% { filter: none; } 50% { filter: brightness(.82) saturate(1.8); } }
+.av-dia { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.av-lista { list-style: none; padding: 0; margin: 0; }
+.av-lista li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--borde); font-size: 13.5px; }
+.av-lista .av-texto { flex: 1; }
+.av-lista button { flex-shrink: 0; padding: 4px 10px; font-size: 12.5px; }

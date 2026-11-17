@@ -58,6 +58,7 @@ from ..almacen.rejilla import (
 )
 from ..io_excel.estructura import ErrorPlazas
 from ..modelo.errores import ErrorDatos
+from ..modelo.revision import Celda, revisar_asignaciones
 from ..modelo.construir import ErrorModeloInconsistente, construir_modelo
 from ..nombres import ErrorNombreNoReconocido
 from ..resolver import resolver_modelo
@@ -606,6 +607,22 @@ def crear_app() -> Flask:
             return _error(_MENSAJE_EXCEL_ABIERTO, 409)
         estado.cargar(ruta)
         return jsonify({**resultado, "filas_añadidas": resultado["filas_añadidas"]})
+
+    @app.post("/api/rejilla/reglas")
+    def api_rejilla_reglas():
+        """Avisos de reglas incumplidas en lo que hay escrito (también lo que aún no se ha guardado)."""
+        ctx = _con_datos()
+        if ctx is None:
+            return _error("No hay ningún campamento cargado")
+        datos, _ = ctx
+        celdas = []
+        for c in (request.get_json(force=True) or {}).get("celdas", []):
+            try:
+                celdas.append(Celda(str(c["k"]), str(c["tipo"]), str(c.get("clave") or ""), int(c["dia"]), str(c["v"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        avisos = revisar_asignaciones(datos, celdas, desde=estado.desde())
+        return jsonify({"desde": estado.desde(), "avisos": [a.a_dict() for a in avisos]})
 
     @app.post("/api/desde")
     def api_desde():

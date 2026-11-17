@@ -144,7 +144,8 @@ al generar los días siguientes. Esquema y correspondencia con las hojas del
 Excel: `turnos/almacen/esquema.py`. El botón «Excel» de la web (o
 `turnos/almacen/exportar.py`) genera un libro con el diseño de siempre, que se
 puede volver a importar. Las bases de datos (`*.db`) quedan fuera de git porque
-contienen nombres reales.
+contienen nombres reales. Toda la carpeta `datos/` está en `.gitignore`: los datos de los
+campamentos no se suben a git.
 
 Interfaz interactiva (ver y editar la rejilla, monitores, disponibilidad, y
 lanzar la optimización desde el navegador):
@@ -172,6 +173,14 @@ y los días en columnas, leída directamente de la hoja `TURNOS`:
   se negará a arrancar.
 - **Fijar:** una casilla escrita a mano en un día que se va a regenerar queda
   *fijada* (amarillo): el optimizador la respeta. Se desmarca en el selector.
+- **Avisos de reglas:** al asignar a mano, si lo escrito incumple alguna regla activa
+  (ausente o descanso impuesto, sexo del turno, vigilancia y comedor al día siguiente,
+  máximo de 2 acampados y 3 días con el mismo, bloques sin intercalar, dos días de
+  dependiente y el tercero a descansar, turno que no admite tanta gente...) sale un
+  mensaje emergente, se marcan las casillas implicadas y queda un resumen sobre la
+  tabla con «Ver todas». Las reglas blandas (repetir turno, 6 días sin descansar) salen
+  como recomendaciones. Solo se revisan las reglas activas en RESTRICCIONES y los días
+  desde el que se va a generar. Lo comprueba `turnos/modelo/revision.py`.
 - **Generar desde un día:** se elige el día (o se hace clic en su cabecera) y
   se pulsa «Generar turnos». Todo lo anterior queda congelado. El resultado
   aparece como **propuesta** (en verde lo que cambia) y no se escribe nada

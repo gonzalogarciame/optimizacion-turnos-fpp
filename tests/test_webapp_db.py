@@ -296,3 +296,19 @@ def test_versiones_guardar_y_restaurar(cliente):
     # restaurar deja antes el estado actual como otra versión: se puede deshacer el deshacer
     assert any(v["nombre"] == r.get_json()["version_previa"] for v in c.get("/api/copias").get_json())
     assert _post(c, "/api/copias/restaurar", {"nombre": "../../otra.db"}).status_code == 400
+
+
+def test_avisos_de_reglas_al_asignar_a_mano(cliente):
+    c, db = cliente
+    rej = c.get("/api/rejilla").get_json()
+    # una casilla de la rejilla del propio campamento: ponemos a alguien ausente ese día
+    dia = rej["dia_fin"]
+    disp = rej["disponibilidad"]
+    ausente = next((m for m, d in disp.items() if d[str(dia)] == "X"), None)
+    assert ausente, "el fixture trae algún ausente el último día"
+    fila, _ = _celda(rej, "turno", "lavaplatos", dia, pos=0)
+    celdas = [{"k": f"turno|{fila}|{dia}", "tipo": "turno", "clave": "lavaplatos", "dia": dia, "v": ausente}]
+    r = c.post("/api/rejilla/reglas", json={"celdas": celdas}).get_json()
+    assert [a["regla"] for a in r["avisos"]] == ["disponibilidad"]
+    assert r["avisos"][0]["celdas"] == [f"turno|{fila}|{dia}"] and "ausente" in r["avisos"][0]["mensaje"]
+    assert c.post("/api/rejilla/reglas", json={"celdas": [{"basura": 1}]}).get_json()["avisos"] == []
