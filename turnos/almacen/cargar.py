@@ -63,8 +63,7 @@ def _leer(con, desde: Optional[int], hasta: Optional[int]) -> Datos:
             dependiente_1=r["dependiente_1"] or None,
             dependiente_2=r["dependiente_2"] or None,
         )
-    if not monitores:
-        raise ErrorDatos("MONITORES: no hay ningún monitor")
+    # Un campamento recién creado en blanco aún no tiene monitores: validar_previa avisa de ello.
 
     disponibilidad: Dict[Tuple[str, int], str] = {
         (r["monitor"], r["dia"]): r["codigo"]
@@ -110,8 +109,7 @@ def _leer(con, desde: Optional[int], hasta: Optional[int]) -> Datos:
             esfuerzo=float(r["esfuerzo"]),
             fila=int(r["orden"]),
         )
-    if not dependientes:
-        raise ErrorDatos("DEPENDIENTES: no hay ningún dependiente")
+    # Puede no haber dependientes (un campamento sin acampados que atender).
     ausentes = {(r["acampado"], r["dia"]) for r in con.execute("SELECT acampado, dia FROM dependiente_ausente")}
 
     # --- La rejilla -------------------------------------------------------

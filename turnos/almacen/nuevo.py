@@ -11,6 +11,7 @@ from ..config import config_desde_pares, normalizar_clave
 from ..modelo.errores import ErrorDatos
 from .cargar import leer_datos_db
 from .esquema import abrir
+from .plantilla import RESTRICCIONES, TURNOS_HABITUALES, pares_config
 
 CARPETA_DATOS = "datos"
 
@@ -63,10 +64,8 @@ def _mapa_dias(origen: List[int], destino: List[int]) -> Dict[int, int]:
     return res
 
 
-def crear_campamento(ruta_origen: str, quincena: int, anio: int, mes: int, dia_inicio: int, dia_fin: int,
-                     copiar_disponibilidad: bool = False, raiz: str = None) -> str:
-    """Campamento nuevo y vacío (sin turnos asignados) con los monitores, dependientes, turnos y
-    restricciones del de origen. Devuelve la ruta de la nueva base de datos."""
+def _carpeta_nueva(quincena: int, anio: int, mes: int, dia_inicio: int, dia_fin: int, raiz: str = None) -> Path:
+    """Valida las fechas y devuelve la carpeta donde irá el campamento (que no debe existir ya)."""
     if not (1 <= mes <= 12):
         raise ValueError("El mes debe estar entre 1 y 12")
     if not (2000 <= anio <= 2100):
@@ -76,11 +75,49 @@ def crear_campamento(ruta_origen: str, quincena: int, anio: int, mes: int, dia_i
     ultimo = calendar.monthrange(anio, mes)[1]
     if not (1 <= dia_inicio <= dia_fin <= ultimo):
         raise ValueError(f"Los días deben cumplir 1 ≤ llegada ≤ salida ≤ {ultimo} (un campamento no cruza de mes)")
-
     carpeta = Path(raiz or CARPETA_DATOS) / nombre_carpeta(anio, mes, quincena, dia_inicio, dia_fin)
-    destino = carpeta / "campamento.db"
-    if destino.exists():
+    if (carpeta / "campamento.db").exists():
         raise ValueError(f"Ya existe ese campamento ({carpeta.name})")
+    return carpeta
+
+
+def crear_en_blanco(quincena: int, anio: int, mes: int, dia_inicio: int, dia_fin: int, raiz: str = None) -> str:
+    """Campamento nuevo desde cero: los turnos y reglas habituales, sin monitores ni dependientes
+    (se añaden después desde la web). Devuelve la ruta de la nueva base de datos."""
+    carpeta = _carpeta_nueva(quincena, anio, mes, dia_inicio, dia_fin, raiz)
+    destino = carpeta / "campamento.db"
+    dias = range(dia_inicio, dia_fin + 1)
+    existia_carpeta = carpeta.exists()
+    try:
+        con = abrir(str(destino), crear=True)
+        try:
+            with con:
+                con.executemany("INSERT INTO config (clave, valor, descripcion) VALUES (?, ?, ?)",
+                                pares_config(quincena, anio, mes, dia_inicio, dia_fin))
+                for i, (turno, plazas, sexo, nota) in enumerate(TURNOS_HABITUALES):
+                    con.execute("INSERT INTO tipos_turno (orden, turno, plazas, sexo_req, esfuerzo, notas) VALUES (?, ?, ?, ?, 2.0, ?)",
+                                (i, turno, plazas, sexo, nota))
+                    con.executemany("INSERT INTO plazas_dia (turno, dia, plazas, maximo) VALUES (?, ?, ?, NULL)",
+                                    [(turno, d, plazas) for d in dias])
+                con.executemany("INSERT INTO restricciones (orden, nombre, activa, tipo, descripcion) VALUES (?, ?, 1, ?, ?)",
+                                [(i, n, tipo, desc) for i, (n, tipo, desc) in enumerate(RESTRICCIONES)])
+                con.execute("INSERT OR REPLACE INTO meta (clave, valor) VALUES ('creado_desde', 'en blanco')")
+        finally:
+            con.close()
+        leer_datos_db(str(destino))  # comprueba que lo creado es coherente
+    except BaseException:
+        if not existia_carpeta:
+            shutil.rmtree(carpeta, ignore_errors=True)
+        raise
+    return destino.as_posix()
+
+
+def crear_campamento(ruta_origen: str, quincena: int, anio: int, mes: int, dia_inicio: int, dia_fin: int,
+                     copiar_disponibilidad: bool = False, raiz: str = None) -> str:
+    """Campamento nuevo y vacío (sin turnos asignados) con los monitores, dependientes, turnos y
+    restricciones del de origen. Devuelve la ruta de la nueva base de datos."""
+    carpeta = _carpeta_nueva(quincena, anio, mes, dia_inicio, dia_fin, raiz)
+    destino = carpeta / "campamento.db"
     dias_nuevos = list(range(dia_inicio, dia_fin + 1))
 
     src = abrir(ruta_origen)

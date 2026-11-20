@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .almacen.esquema import abrir
+from .almacen.plantilla import RESTRICCIONES, pares_config
 
 RUTA_DEMO = "datos/demo/campamento.db"
 ANIO, MES, DIA_INICIO, DIA_FIN = 2026, 8, 1, 13
@@ -42,51 +43,6 @@ TURNOS = [
 
 # (acampado, sexo del monitor que necesita, esfuerzo)
 DEPENDIENTES = [("Dani", "M", 4.0), ("Leo", "M", 3.0), ("Sofi", "F", 4.0), ("Nerea", "F", 3.0)]
-
-CONFIG = [
-    ("QUINCENA", "1", "Identificador de la quincena"),
-    ("AÑO", str(ANIO), "Año del campamento"),
-    ("MES", str(MES), "Mes (8=agosto). Necesario para saber qué días son fin de semana"),
-    ("DIA_INICIO", str(DIA_INICIO), "Primer día del horizonte"),
-    ("DIA_FIN", str(DIA_FIN), "Último día del horizonte"),
-    ("DIA_REOPTIMIZACION", str(DIA_INICIO), "Los días anteriores a este son datos fijos e inmutables"),
-    ("SOLVER", "appsi_highs", "Solver de Pyomo"),
-    ("TIME_LIMIT_S", "60", "Límite de tiempo del solver, en segundos"),
-    ("MIP_GAP", "0.01", "Gap relativo de parada (0.01 = 1%)"),
-    ("DIAS_DESCANSO_MINIMO", "1", "Descansos deseados por cada DIAS_VENTANA_DESCANSO días"),
-    ("DIAS_VENTANA_DESCANSO", "6", "Tamaño de la ventana para el descanso mínimo"),
-    ("W_FALTA", "10000", "Peso: dejar un turno sin cubrir. Muy alto a propósito"),
-    ("W_EQUIDAD", "100", "Peso: diferencia de esfuerzo entre el monitor más y el menos cargado"),
-    ("W_DESCANSO_LIM", "30", "Peso: dar descanso a alguien de disponibilidad limitada"),
-    ("W_VARIEDAD", "20", "Peso: cada pareja monitor-dependiente distinta"),
-    ("W_REPETICION", "5", "Peso: repetir el mismo turno dos días seguidos"),
-    ("W_FALTA_DESC", "50", "Peso: incumplir el descanso mínimo"),
-]
-
-D, B = "DURA", "BLANDA"
-RESTRICCIONES = [
-    ("cobertura", D, "Cada turno se cubre con sus plazas (con holgura penalizada)"),
-    ("un_turno_por_dia", D, "Un monitor hace como mucho una cosa al día: turno, dependiente o descanso"),
-    ("disponibilidad", D, "Nadie recibe nada un día en que está ausente (X)"),
-    ("descanso_forzado", D, "Las celdas R de DISPONIBILIDAD son descanso obligatorio"),
-    ("sexo_turno", D, "Vigilancia de chicos solo chicos; de chicas solo chicas"),
-    ("sexo_dependiente", D, "El monitor de un dependiente es de su mismo sexo, salvo AMBOS_SEXOS=1"),
-    ("finde_sin_descanso", D, "PERMITE_DESCANSO=0 -> ese monitor nunca recibe descanso"),
-    ("vigilancia_no_comedor", D, "Quien vigila de noche no va a comedor al día siguiente (las 4 vigilancias)"),
-    ("cobertura_dependiente", D, "Cada dependiente presente tiene exactamente un monitor"),
-    ("asignacion_dep_fijada", D, "Se respeta lo escrito en ASIG_DEPENDIENTE"),
-    ("max_2_dependientes", D, "Un monitor lleva como mucho 2 acampados distintos"),
-    ("max_3_dias_por_dep", D, "Como mucho 3 días con el mismo acampado"),
-    ("bloques_no_intercalados", D, "Si lleva 2 acampados, primero uno y después el otro"),
-    ("dep_2_dias_tercero_descansa", D, "Dos días seguidos de dependiente -> el tercero es descanso"),
-    ("historico_inmutable", D, "Los días < DIA_REOPTIMIZACION quedan fijados"),
-    ("equidad_esfuerzo", B, "Minimiza la diferencia de esfuerzo normalizado entre monitores"),
-    ("penalizar_descanso_limitado", B, "Evita dar descanso a quien está pocos días"),
-    ("variedad_dependiente", B, "Minimiza el número de parejas monitor-acampado"),
-    ("no_repetir_turno", B, "Evita el mismo turno dos días seguidos"),
-    ("descanso_minimo", B, "Al menos DIAS_DESCANSO_MINIMO por ventana"),
-]
-
 
 def _dias_finde() -> List[int]:
     return [d for d in range(DIA_INICIO, DIA_FIN + 1) if calendar.weekday(ANIO, MES, d) >= 5]
@@ -134,7 +90,8 @@ def crear_demo(ruta: str = RUTA_DEMO, generar: int = 0) -> str:
     try:
         with con:
             con.execute("INSERT OR REPLACE INTO meta (clave, valor) VALUES ('origen', 'demo')")
-            con.executemany("INSERT INTO config (clave, valor, descripcion) VALUES (?, ?, ?)", CONFIG)
+            con.executemany("INSERT INTO config (clave, valor, descripcion) VALUES (?, ?, ?)",
+                            pares_config(1, ANIO, MES, DIA_INICIO, DIA_FIN, TIME_LIMIT_S=60))
             for i, nombre, sexo in monitores:
                 grupo = "FINDE" if nombre in finde_nombres else ("NUEVO" if nombre in NUEVOS else "ANTIGUO")
                 con.execute(

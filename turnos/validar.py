@@ -43,6 +43,10 @@ def validar_previa(datos: Datos) -> InformeValidacion:
     informe = InformeValidacion()
     informe.avisos.extend(datos.avisos)
 
+    if not datos.monitores:
+        informe.errores.append("No hay ningún monitor: añádelos en la pestaña «Monitores» antes de generar turnos.")
+        return informe
+
     _validar_holgura_por_dia(datos, informe)
     _validar_holgura_por_sexo(datos, informe)
     _validar_dependientes_sin_monitor(datos, informe)
