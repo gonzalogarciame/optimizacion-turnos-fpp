@@ -153,9 +153,14 @@ python -m turnos.webapp [datos/<campamento>/campamento.db | libro.xlsx]
 Todo se hace desde la web, sin conexión a internet:
 
 - **Menú «Campamento»** (arriba a la derecha): cambiar de campamento, **crear uno nuevo**
-  (quincena, año, mes y días de llegada y salida: sale vacío, con los monitores,
-  dependientes, turnos y reglas del actual; opcionalmente copia quién viene), **importar
-  un Excel** subiéndolo, o descargar una copia en Excel.
+  (quincena, año, mes y días de llegada y salida), **importar un Excel** subiéndolo, o
+  descargar una copia en Excel. Un campamento nuevo puede salir **en blanco** (los turnos y reglas
+  habituales, sin personas) o **copiando el que tienes abierto** (con sus monitores, dependientes,
+  turnos y reglas; opcionalmente quién viene cada día).
+- **Primer uso:** si no hay ningún campamento, la web enseña una pantalla de inicio con tres
+  opciones: crear uno en blanco, probar la demo o importar un Excel. Al crear uno en blanco te lleva
+  a **Monitores** para darlos de alta (nombre y sexo bastan; el resto tiene valores por defecto);
+  después, en **Turnos y dependientes** ajustas las plazas y añades a los acampados.
 - **Pestaña «Versiones»:** lista de las copias de seguridad; se puede guardar una
   versión a mano y **volver a cualquiera** (lo de ahora se guarda antes, así que
   también se puede deshacer la vuelta atrás).
