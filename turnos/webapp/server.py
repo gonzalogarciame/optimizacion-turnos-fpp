@@ -747,9 +747,12 @@ def crear_app() -> Flask:
             return _error("Optimiza primero para ver el informe", 409)
 
         esfuerzo = {}
+        # Los monitores de fin de semana no están los mismos días que el resto: comparar su esfuerzo,
+        # descansos o dependientes con los demás no tiene sentido, así que no entran en el informe.
+        finde = {mo for mo, mon in datos.monitores.items() if not mon.permite_descanso}
         for mo in datos.monitores:
             dp = datos.dias_presente.get(mo, 0)
-            if dp == 0:
+            if dp == 0 or mo in finde:
                 continue
             carga = sum(datos.turnos[t].esfuerzo for (m2, t, d), v in solucion.x.items() if m2 == mo and v == 1)
             carga += sum(datos.dependientes[p].esfuerzo for (m2, p, d), v in solucion.y.items() if m2 == mo and v == 1)
@@ -757,15 +760,13 @@ def crear_app() -> Flask:
 
         descansos = {}
         for (mo, d), v in solucion.r.items():
-            if v == 1:
+            if v == 1 and mo not in finde:
                 descansos[mo] = descansos.get(mo, 0) + 1
 
         dias_dep_monitor = {}
-        dias_dep_acampado = {}
         for (mo, p, d), v in solucion.y.items():
-            if v == 1:
+            if v == 1 and mo not in finde:
                 dias_dep_monitor[mo] = dias_dep_monitor.get(mo, 0) + 1
-                dias_dep_acampado[p] = dias_dep_acampado.get(p, 0) + 1
 
         falta = {f"{t} (día {d})": v for (t, d), v in solucion.falta.items() if v > 1e-6}
 
@@ -776,9 +777,9 @@ def crear_app() -> Flask:
             "esfuerzo": _serie(esfuerzo),
             "descansos": _serie(descansos, 0),
             "dias_dependiente_monitor": _serie(dias_dep_monitor, 0),
-            "dias_dependiente_acampado": _serie(dias_dep_acampado, 0),
             "falta": _serie(falta),
         })
+            "excluidos_finde": sorted(finde),
 
     # ------------------------------------------------------------------
     # Campamentos: listar, crear uno nuevo, importar un Excel

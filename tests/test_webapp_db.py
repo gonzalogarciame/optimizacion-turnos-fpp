@@ -198,7 +198,14 @@ def test_generar_un_dia_proponer_y_aplicar(cliente):
     reopt = con.execute("SELECT valor FROM config WHERE clave = 'DIA_REOPTIMIZACION'").fetchone()[0]
     con.close()
     assert despues != antes and reopt == str(dia)
-    assert c.get("/api/informe").status_code == 200
+    inf = c.get("/api/informe")
+    assert inf.status_code == 200
+    inf = inf.get_json()
+    assert "dias_dependiente_acampado" not in inf  # cada acampado tiene monitor todos los días: no aporta nada
+    finde = {m["NOMBRE"] for m in c.get("/api/monitores").get_json() if not m["PERMITE_DESCANSO"]}
+    assert finde and set(inf["excluidos_finde"]) == finde
+    for serie in ("esfuerzo", "descansos", "dias_dependiente_monitor"):
+        assert not finde & {x["label"] for x in inf[serie]}  # los de fin de semana no se comparan con los demás
 
 
 def test_descargar_excel_se_genera_desde_la_base_de_datos(cliente, tmp_path):
