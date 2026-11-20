@@ -7,19 +7,51 @@ respetando la disponibilidad de cada monitor, las reglas de cada campamento
 y repartiendo el esfuerzo de forma equitativa.
 
 No está atado a un campamento ni a una quincena concreta: **cada campamento
-o quincena tiene su propio Excel** en `datos/`, y ese Excel es la única
-fuente de verdad (no hay base de datos). Cualquier persona que organice
-turnos en la Fundación puede usarlo, mientras su Excel siga la misma
-estructura de hojas que se describe más abajo.
+tiene su propia base de datos** SQLite (`datos/<campamento>/campamento.db`),
+que se maneja desde la web. El Excel de siempre solo hace falta para
+importar datos antiguos o para exportar una copia.
 
-- CLI: `python -m turnos validar|optimizar --excel datos/<campamento>/turnos.xlsx`
-- Interfaz web local: `python -m turnos.webapp` (trabaja sobre la base de datos del campamento), luego abrir
-  `http://127.0.0.1:5000` en el navegador. Es una tabla turnos × días donde
-  se edita cada casilla con un selector de monitores, también en días ya
-  pasados, y desde la que se lanza el optimizador a partir de un día
-  concreto (ver §4.1). Todo el HTML/CSS/JS es estático (sin CDN ni
-  dependencias de red): funciona sin conexión a internet. Lee y escribe el
-  mismo Excel que las otras dos interfaces.
+- Interfaz web local: `python -m turnos.webapp`, y abrir `http://127.0.0.1:5000`
+  (ver §4.1). Es una tabla turnos × días donde se edita cada casilla con un selector
+  de monitores, se lanza el optimizador desde el día que se quiera y se avisa si
+  algo asignado a mano incumple una regla. Todo el HTML/CSS/JS es estático
+  (sin CDN ni dependencias de red): **funciona sin conexión a internet**.
+- CLI: `python -m turnos validar|optimizar --db datos/<campamento>/campamento.db`
+  (también acepta `--excel`).
+
+## Demo: pruébalo en un minuto, sin datos reales
+
+```bash
+pip install -r requirements.txt
+python -m turnos.demo        # crea un campamento inventado y abre la web en http://127.0.0.1:5000
+```
+
+Crea `datos/demo/campamento.db` con 30 monitores, 4 acampados dependientes y 13 días
+**inventados** (nada de personas reales), con los 5 primeros días ya generados. Después
+solo hay que pulsar **Generar turnos** para que el optimizador rellene el resto
+(unos segundos; todo el campamento tarda cerca de un minuto con el solver gratuito HiGHS).
+`python -m turnos.demo --generar 0` la deja con la rejilla vacía y `--rehacer` la vuelve a crear.
+
+**Rejilla de turnos.** Cada casilla se cambia con un selector de monitores; los días ya
+vividos quedan en gris y la parte coloreada de la derecha es lo que se genera.
+
+![Rejilla de turnos](docs/img/rejilla.png)
+
+**Propuesta del optimizador.** Antes de guardar nada enseña qué cambiaría (en verde) y si
+queda algún turno sin cubrir. Se aplica o se descarta.
+
+![Propuesta del optimizador](docs/img/propuesta.png)
+
+**Avisos al asignar a mano.** Si lo escrito incumple una regla (aquí, vigilar de noche y
+estar en comedor al día siguiente) sale un mensaje, se marcan las casillas y queda un resumen
+sobre la tabla con el detalle.
+
+![Aviso de regla incumplida](docs/img/aviso-reglas.png)
+
+**Disponibilidad.** Quién viene cada día, quién no y los descansos impuestos; a la vez se ven
+los descansos que el optimizador ha asignado en la rejilla.
+
+![Disponibilidad](docs/img/disponibilidad.png)
 
 ---
 
@@ -75,8 +107,9 @@ datos/                      # Un Excel por campamento/quincena — la fuente de 
 │   ├── turnos.xlsx            # Excel en uso: se lee y se sobrescribe al optimizar
 │   └── turnos_backup_*.xlsx   # Copias de seguridad automáticas (con fecha y hora)
 └── <nuevo-campamento>/        # Cada campamento nuevo crea su propia carpeta (ver §6)
-turnos/                     # Código del sistema
+turnos/                     # Código del sistema (turnos/demo.py: campamento de demostración)
 tests/                      # Pruebas automáticas
+docs/img/                   # Capturas de la demo que usa este README
 requirements.txt
 ```
 
