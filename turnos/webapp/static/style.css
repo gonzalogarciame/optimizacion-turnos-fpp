@@ -463,3 +463,16 @@ label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px;
 .av-lista li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--borde); font-size: 13.5px; }
 .av-lista .av-texto { flex: 1; }
 .av-lista button { flex-shrink: 0; padding: 4px 10px; font-size: 12.5px; }
+
+/* primer uso: bienvenida */
+.bienvenida { max-width: 880px; margin: 40px auto; }
+.bienvenida h2 { margin-bottom: 4px; }
+.bienvenida-opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 18px 0; }
+.tarjeta-inicio { display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 18px; background: #fff; color: var(--texto); border: 1px solid var(--borde); border-radius: 12px; cursor: pointer; font: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.tarjeta-inicio:hover:not(:disabled) { border-color: var(--acento); box-shadow: 0 6px 18px rgba(79, 70, 229, .12); transform: translateY(-2px); }
+.tarjeta-inicio b { font-size: 15px; }
+.tarjeta-inicio span { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.campo-base { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); font-weight: 500; margin-top: 12px; }
+.campo-base select { padding: 7px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; background: #fff; }
+.pequeno { font-size: 12px; }
+label.check[hidden] { display: none; }

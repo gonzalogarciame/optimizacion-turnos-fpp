@@ -92,8 +92,13 @@ async function abrirNuevoCampamento() {
 
   const modal = abrirModal(`
     <h3>Nuevo campamento</h3>
-    <p class="muted">Se crea vacío (sin turnos asignados) con los monitores, dependientes, turnos y reglas del campamento que tienes abierto.
-    El actual no se modifica.</p>
+    <label class="campo-base">Empezar
+      <select id="nc-base">
+        ${actual ? `<option value="copia">Copiando el campamento abierto (monitores, dependientes, turnos y reglas)</option>` : ""}
+        <option value="blanco">En blanco (turnos y reglas habituales; los monitores los añades después)</option>
+      </select>
+    </label>
+    <p class="muted">Se crea sin turnos asignados. ${actual ? "El campamento que tienes abierto no se modifica." : ""}</p>
     <div class="form-rejilla">
       <label>Quincena <input type="number" id="nc-quincena" min="1" value="${quincena}"></label>
       <label>Año <input type="number" id="nc-anio" min="2000" max="2100" value="${anio}"></label>
@@ -102,7 +107,7 @@ async function abrirNuevoCampamento() {
       <label>Día de salida <input type="number" id="nc-fin" min="1" max="31" value="${fin}"></label>
     </div>
     <div id="nc-resumen" class="resumen-fechas"></div>
-    <label class="check"><input type="checkbox" id="nc-disp"> Copiar quién viene y quién no del campamento actual (día a día, por posición)</label>
+    <label class="check" id="nc-fila-disp"><input type="checkbox" id="nc-disp"> Copiar quién viene y quién no del campamento actual (día a día, por posición)</label>
     <div id="nc-error" class="linea-error" hidden></div>
     <div class="modal-pie">
       <button type="button" class="secundario" id="nc-cancelar">Cancelar</button>
@@ -110,6 +115,9 @@ async function abrirNuevoCampamento() {
     </div>`);
   const q = (s) => modal.querySelector(s);
   q("#nc-mes").value = String(mes);
+  const alCambiarBase = () => { q("#nc-fila-disp").hidden = q("#nc-base").value !== "copia"; };
+  q("#nc-base").addEventListener("change", alCambiarBase);
+  alCambiarBase();
 
   const valores = () => ({
     quincena: Number(q("#nc-quincena").value), anio: Number(q("#nc-anio").value), mes: Number(q("#nc-mes").value),
@@ -136,15 +144,58 @@ async function abrirNuevoCampamento() {
     q("#nc-error").hidden = true;
     q("#nc-crear").disabled = true;
     try {
-      await api("POST", "/api/campamentos/nuevo", { ...valores(), copiar_disponibilidad: q("#nc-disp").checked });
+      const base = q("#nc-base").value;
+      await api("POST", "/api/campamentos/nuevo", { ...valores(), base, copiar_disponibilidad: base === "copia" && q("#nc-disp").checked });
       cerrarModal();
-      toast("Campamento creado. Ya estás trabajando en él.", "exito");
-      await refrescarTodo();
+      if (base === "blanco") {
+        toast("Campamento creado. Empieza añadiendo los monitores.", "exito");
+        await refrescarResumen();
+        irA("monitores");
+      } else {
+        toast("Campamento creado. Ya estás trabajando en él.", "exito");
+        await refrescarTodo();
+      }
     } catch (e) {
       q("#nc-error").textContent = e.message;
       q("#nc-error").hidden = false;
       q("#nc-crear").disabled = false;
     }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Pantalla de bienvenida (aún no hay ningún campamento)
+// ---------------------------------------------------------------------
+function renderBienvenida(cont) {
+  cont.innerHTML = `
+    <div class="bienvenida">
+      <h2>Bienvenido</h2>
+      <p class="muted">Todavía no hay ningún campamento. Elige cómo empezar:</p>
+      <div class="bienvenida-opciones">
+        <button type="button" class="tarjeta-inicio" id="bv-blanco">
+          <b>Crear un campamento</b>
+          <span>Pones las fechas y añades tus monitores, dependientes y turnos. Empiezas con los turnos y las reglas habituales.</span>
+        </button>
+        <button type="button" class="tarjeta-inicio" id="bv-demo">
+          <b>Probar con la demo</b>
+          <span>Un campamento de ejemplo con nombres inventados, para ver cómo funciona antes de meter datos reales.</span>
+        </button>
+        <button type="button" class="tarjeta-inicio" id="bv-excel">
+          <b>Importar un Excel</b>
+          <span>Si ya tienes un campamento en el Excel de siempre, súbelo y se convierte (el original no se toca).</span>
+        </button>
+      </div>
+      <p class="muted pequeno">Todo se guarda en este ordenador, en la carpeta <code>datos/</code>. No hace falta conexión a internet.</p>
+    </div>`;
+  cont.querySelector("#bv-blanco").addEventListener("click", abrirNuevoCampamento);
+  cont.querySelector("#bv-excel").addEventListener("click", () => document.getElementById("fichero-excel").click());
+  cont.querySelector("#bv-demo").addEventListener("click", async (e) => {
+    e.currentTarget.disabled = true;
+    e.currentTarget.querySelector("span").textContent = "Preparando la demo… (unos segundos)";
+    try {
+      await api("POST", "/api/campamentos/demo", {});
+      await refrescarTodo();
+    } catch (err) { toast(err.message, "error"); renderBienvenida(cont); }
   });
 }
 

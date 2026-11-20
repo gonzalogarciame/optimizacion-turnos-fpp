@@ -47,7 +47,7 @@ from ..almacen.edicion import (
 from ..almacen.exportar import exportar_excel
 from ..almacen.guardar import escribir_solucion_db
 from ..almacen.importar import importar_excel
-from ..almacen.nuevo import CARPETA_DATOS, crear_campamento, listar_campamentos
+from ..almacen.nuevo import CARPETA_DATOS, crear_campamento, crear_en_blanco, listar_campamentos
 from ..almacen.rejilla import (
     ErrorEdicionRejilla,
     asignaciones_trabajo_db,
@@ -242,7 +242,8 @@ def _ejecutar_generacion(trabajo: dict, ruta: str, desde: int, dos_fases: bool, 
 
 def crear_app() -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
-    estado.cargar(estado.ruta_actual())
+    if estado.ruta_actual():  # sin campamentos aún (primer uso), la web ofrece crear uno
+        estado.cargar(estado.ruta_actual())
 
     # ------------------------------------------------------------------
     @app.get("/")
@@ -746,10 +747,10 @@ def crear_app() -> Flask:
         if solucion is None or solucion.estado == "infactible":
             return _error("Optimiza primero para ver el informe", 409)
 
-        esfuerzo = {}
         # Los monitores de fin de semana no están los mismos días que el resto: comparar su esfuerzo,
         # descansos o dependientes con los demás no tiene sentido, así que no entran en el informe.
         finde = {mo for mo, mon in datos.monitores.items() if not mon.permite_descanso}
+        esfuerzo = {}
         for mo in datos.monitores:
             dp = datos.dias_presente.get(mo, 0)
             if dp == 0 or mo in finde:
@@ -778,8 +779,8 @@ def crear_app() -> Flask:
             "descansos": _serie(descansos, 0),
             "dias_dependiente_monitor": _serie(dias_dep_monitor, 0),
             "falta": _serie(falta),
-        })
             "excluidos_finde": sorted(finde),
+        })
 
     # ------------------------------------------------------------------
     # Campamentos: listar, crear uno nuevo, importar un Excel
@@ -790,21 +791,38 @@ def crear_app() -> Flask:
 
     @app.post("/api/campamentos/nuevo")
     def api_campamento_nuevo():
-        if _con_datos() is None:
-            return _error("No hay ningún campamento cargado del que partir")
         if _generando():
             return _error("Hay una generación en curso: espera a que termine.", 409)
         c = request.get_json(force=True) or {}
+        en_blanco = c.get("base") == "blanco"
+        if not en_blanco and _con_datos() is None:
+            return _error("No hay ningún campamento abierto del que copiar: crea uno en blanco.")
         try:
-            nueva = crear_campamento(
-                estado.ruta_actual(), int(c["quincena"]), int(c["anio"]), int(c["mes"]),
-                int(c["dia_inicio"]), int(c["dia_fin"]), bool(c.get("copiar_disponibilidad")),
-            )
+            fechas = (int(c["quincena"]), int(c["anio"]), int(c["mes"]), int(c["dia_inicio"]), int(c["dia_fin"]))
+            if en_blanco:
+                nueva = crear_en_blanco(*fechas)
+            else:
+                nueva = crear_campamento(estado.ruta_actual(), *fechas, bool(c.get("copiar_disponibilidad")))
         except (KeyError, TypeError):
             return _error("Faltan datos del campamento nuevo")
         except (ValueError, ErrorDatos) as exc:
             return _error(str(exc))
         estado.cargar(nueva)
+        return api_estado()
+
+    @app.post("/api/campamentos/demo")
+    def api_campamento_demo():
+        """Abre el campamento de demostración (datos inventados); lo crea si todavía no existe."""
+        from ..demo import RUTA_DEMO, crear_demo
+        if _generando():
+            return _error("Hay una generación en curso: espera a que termine.", 409)
+        if not Path(RUTA_DEMO).exists():
+            try:
+                crear_demo(RUTA_DEMO, generar=5)
+            except Exception:  # sin solver utilizable la demo se queda con la rejilla vacía
+                Path(RUTA_DEMO).unlink(missing_ok=True)
+                crear_demo(RUTA_DEMO, generar=0)
+        estado.cargar(RUTA_DEMO)
         return api_estado()
 
     @app.post("/api/campamentos/importar")

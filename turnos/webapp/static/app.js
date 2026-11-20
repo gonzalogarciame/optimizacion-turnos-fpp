@@ -279,6 +279,8 @@ async function dibujarPagina() {
   cont.classList.remove("llena");  // las pantallas con tabla grande se ajustan a la altura de la ventana
   cont.innerHTML = "<p>Cargando…</p>";
   try {
+    const est = await api("GET", "/api/estado");
+    if (!est.cargado) { renderBienvenida(cont); return; }  // campamentos.js
     await PAGINAS[paginaActual].render(cont);
   } catch (e) {
     cont.innerHTML = banner("error", e.message);
@@ -612,11 +614,11 @@ async function renderInforme(cont) {
   const zona = cont.querySelector("#zona-informe");
   try {
     const r = await api("GET", "/api/informe");
-    dibujarSerie(zona, "Esfuerzo normalizado por monitor", r.esfuerzo);
-    dibujarSerie(zona, "Descansos por monitor", r.descansos);
     if (r.excluidos_finde.length) {
       zona.appendChild(elemento(`<p class="muted nota-informe" title="${esc(r.excluidos_finde.join(", "))}">Las comparaciones entre monitores no incluyen a los ${r.excluidos_finde.length} monitores de fin de semana, porque no están los mismos días que el resto.</p>`));
     }
+    dibujarSerie(zona, "Esfuerzo normalizado por monitor", r.esfuerzo);
+    dibujarSerie(zona, "Descansos por monitor", r.descansos);
     dibujarSerie(zona, "Días de dependiente por monitor", r.dias_dependiente_monitor);
     if (r.falta.length) dibujarSerie(zona, "Turnos sin cubrir", r.falta);
     else zona.appendChild(elemento(banner("exito", "No hay turnos sin cubrir.")));

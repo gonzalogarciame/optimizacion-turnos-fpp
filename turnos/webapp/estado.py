@@ -34,7 +34,7 @@ def ruta_inicial() -> str:
     candidatas = [p for p in Path("datos").glob("**/*.db") if "copias" not in p.parts]
     if candidatas:
         return str(max(candidatas, key=lambda p: p.stat().st_mtime)).replace("\\", "/")
-    return RUTA_POR_DEFECTO
+    return RUTA_POR_DEFECTO if Path(RUTA_POR_DEFECTO).exists() else ""  # "" = aún no hay ningún campamento
 
 
 def resolver_ruta(ruta: str) -> str:
