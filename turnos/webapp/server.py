@@ -44,6 +44,7 @@ from ..almacen.edicion import (
     leer_restricciones_df,
     leer_tipos_turno_df,
 )
+from ..almacen.esquema import abrir
 from ..almacen.exportar import exportar_excel
 from ..almacen.guardar import escribir_solucion_db
 from ..almacen.importar import importar_excel
@@ -739,46 +740,66 @@ def crear_app() -> Flask:
     # ------------------------------------------------------------------
     @app.get("/api/informe")
     def api_informe():
+        """Informe de lo que hay escrito en la rejilla (no depende de la última optimización)."""
         ctx = _con_datos()
         if ctx is None:
             return _error("No hay ningún campamento cargado")
-        datos, _ = ctx
-        solucion = estado.get("solucion")
-        if solucion is None or solucion.estado == "infactible":
-            return _error("Optimiza primero para ver el informe", 409)
+        datos, ruta = ctx
+        con = abrir(ruta)
+        try:
+            filas = [tuple(r) for r in con.execute("SELECT tipo, clave, dia, monitor FROM asignaciones")]
+        finally:
+            con.close()
+        if not filas:
+            return jsonify({"vacio": True, "esfuerzo": [], "descansos": [], "dias_dependiente_monitor": [],
+                            "falta": [], "excluidos_finde": [], "dias": []})
 
+        # Solo cuentan los días que ya tienen algo escrito.
+        dias = sorted({d for _, _, d, _ in filas if d in datos.dias})
         # Los monitores de fin de semana no están los mismos días que el resto: comparar su esfuerzo,
         # descansos o dependientes con los demás no tiene sentido, así que no entran en el informe.
         finde = {mo for mo, mon in datos.monitores.items() if not mon.permite_descanso}
-        esfuerzo = {}
-        for mo in datos.monitores:
-            dp = datos.dias_presente.get(mo, 0)
-            if dp == 0 or mo in finde:
+        carga, descansos, dias_dep = {}, {}, {}
+        cubiertos = {}
+        for tipo, clave, d, mo in filas:
+            if d not in dias or mo not in datos.monitores:
                 continue
-            carga = sum(datos.turnos[t].esfuerzo for (m2, t, d), v in solucion.x.items() if m2 == mo and v == 1)
-            carga += sum(datos.dependientes[p].esfuerzo for (m2, p, d), v in solucion.y.items() if m2 == mo and v == 1)
-            esfuerzo[mo] = carga / dp
-
-        descansos = {}
-        for (mo, d), v in solucion.r.items():
-            if v == 1 and mo not in finde:
+            if tipo == "turno" and clave in datos.turnos:
+                carga[mo] = carga.get(mo, 0.0) + datos.turnos[clave].esfuerzo
+                cubiertos[(clave, d)] = cubiertos.get((clave, d), 0) + 1
+            elif tipo == "dependiente" and clave in datos.dependientes:
+                carga[mo] = carga.get(mo, 0.0) + datos.dependientes[clave].esfuerzo
+                dias_dep[mo] = dias_dep.get(mo, 0) + 1
+            elif tipo == "descanso":
                 descansos[mo] = descansos.get(mo, 0) + 1
 
-        dias_dep_monitor = {}
-        for (mo, p, d), v in solucion.y.items():
-            if v == 1 and mo not in finde:
-                dias_dep_monitor[mo] = dias_dep_monitor.get(mo, 0) + 1
+        esfuerzo = {}
+        for mo in datos.monitores:
+            if mo in finde:
+                continue
+            presente = sum(1 for d in dias if datos.disponibilidad.get((mo, d), "D") != "X")
+            if presente:
+                esfuerzo[mo] = carga.get(mo, 0.0) / presente
+        descansos = {mo: v for mo, v in descansos.items() if mo not in finde}
+        dias_dep = {mo: v for mo, v in dias_dep.items() if mo not in finde}
 
-        falta = {f"{t} (día {d})": v for (t, d), v in solucion.falta.items() if v > 1e-6}
+        falta = {}
+        for turno in datos.turnos:
+            for d in dias:
+                f = datos.plazas.get((turno, d), 0) - cubiertos.get((turno, d), 0)
+                if f > 0:
+                    falta[f"{turno} (día {d})"] = f
 
         def _serie(d, dec=2):
             return [{"label": k, "valor": round(float(v), dec)} for k, v in sorted(d.items(), key=lambda kv: -kv[1])]
 
         return jsonify({
+            "vacio": False,
+            "dias": dias,
             "esfuerzo": _serie(esfuerzo),
             "descansos": _serie(descansos, 0),
-            "dias_dependiente_monitor": _serie(dias_dep_monitor, 0),
-            "falta": _serie(falta),
+            "dias_dependiente_monitor": _serie(dias_dep, 0),
+            "falta": _serie(falta, 0),
             "excluidos_finde": sorted(finde),
         })
 

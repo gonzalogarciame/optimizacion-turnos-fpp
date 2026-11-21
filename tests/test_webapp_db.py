@@ -206,6 +206,11 @@ def test_generar_un_dia_proponer_y_aplicar(cliente):
     assert finde and set(inf["excluidos_finde"]) == finde
     for serie in ("esfuerzo", "descansos", "dias_dependiente_monitor"):
         assert not finde & {x["label"] for x in inf[serie]}  # los de fin de semana no se comparan con los demás
+    # el informe sale de lo escrito en la rejilla: sigue ahí aunque se recargue y no haya optimización en memoria
+    assert _post(c, "/api/cargar", {"ruta": db}).status_code == 200
+    de_nuevo = c.get("/api/informe")
+    assert de_nuevo.status_code == 200 and not de_nuevo.get_json()["vacio"]
+    assert de_nuevo.get_json()["esfuerzo"] == inf["esfuerzo"]
 
 
 def test_descargar_excel_se_genera_desde_la_base_de_datos(cliente, tmp_path):

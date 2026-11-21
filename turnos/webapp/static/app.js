@@ -614,6 +614,11 @@ async function renderInforme(cont) {
   const zona = cont.querySelector("#zona-informe");
   try {
     const r = await api("GET", "/api/informe");
+    if (r.vacio) {
+      zona.innerHTML = banner("info", "Todavía no hay turnos escritos en la rejilla. Cuando generes o escribas algunos, aquí verás el informe.");
+      return;
+    }
+    zona.appendChild(elemento(`<p class="muted">Días con turnos: ${r.dias[0]}–${r.dias[r.dias.length - 1]}. Refleja lo que hay en la rejilla ahora mismo.</p>`));
     if (r.excluidos_finde.length) {
       zona.appendChild(elemento(`<p class="muted nota-informe" title="${esc(r.excluidos_finde.join(", "))}">Las comparaciones entre monitores no incluyen a los ${r.excluidos_finde.length} monitores de fin de semana, porque no están los mismos días que el resto.</p>`));
     }
@@ -623,7 +628,7 @@ async function renderInforme(cont) {
     if (r.falta.length) dibujarSerie(zona, "Turnos sin cubrir", r.falta);
     else zona.appendChild(elemento(banner("exito", "No hay turnos sin cubrir.")));
   } catch (e) {
-    zona.innerHTML = banner("info", "Optimiza primero (pantalla 'Optimizar') para ver el informe.");
+    zona.innerHTML = banner("error", e.message);
   }
 }
 
