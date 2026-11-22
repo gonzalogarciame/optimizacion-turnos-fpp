@@ -2,6 +2,7 @@
 
     min   W_FALTA        · Σ falta[t,d]
         + W_EQUIDAD      · (cmax - cmin)
+        + 0.2·W_EQUIDAD  · Σ_m |carga_norm[m] - referencia|   (que nadie quede lejos del resto)
         + W_DESCANSO_LIM · Σ_{m: PENALIZAR_DESCANSO=1, d} r[m,d]
         + W_VARIEDAD     · Σ z[m,p]
         + W_REPETICION   · Σ rep[m,t,d]
@@ -18,6 +19,11 @@ suma: no hay que tocar este fichero para activar/desactivar penalizaciones,
 solo la hoja RESTRICCIONES.
 """
 from pyomo.environ import Objective, minimize
+
+# Peso de la suma de desviaciones respecto a W_EQUIDAD. Con el peso entero el solver tarda mucho más
+# y, con el límite de tiempo de un campamento real, a veces deja turnos sin cubrir; con 0.2 reparte
+# mejor que con solo cmax-cmin y sigue cubriéndolo todo.
+FACTOR_DESVIACION = 0.2
 
 # nombre de la restricción (o penalización interna) -> atributo de Config con su peso
 PESO_POR_PENALIZACION = {
@@ -46,6 +52,8 @@ def construir_objetivo(m, datos, cfg):
 
     if hasattr(m, "cmax") and hasattr(m, "cmin"):
         expr = expr + cfg.w_equidad * (m.cmax - m.cmin)
+    if hasattr(m, "dev_equidad"):
+        expr = expr + FACTOR_DESVIACION * cfg.w_equidad * sum(m.dev_equidad[mo] for mo in m.equi_monitores)
 
     m.objetivo = Objective(expr=expr, sense=minimize)
     return m.objetivo

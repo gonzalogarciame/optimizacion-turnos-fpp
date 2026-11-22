@@ -4,10 +4,22 @@
     carga_norm[m] = carga[m] / dias_presente[m]
     cmax ≥ carga_norm[m]  ∀m        cmin ≤ carga_norm[m]  ∀m
 
-Minimizar `cmax - cmin` (con peso W_EQUIDAD en el objetivo) iguala el
-esfuerzo normalizado entre monitores. Se normaliza por días de presencia
-(un parámetro fijo, así la expresión sigue siendo lineal) porque cada
-monitor está presente un número distinto de días.
+Se minimiza (con peso W_EQUIDAD en el objetivo) la diferencia entre el más y el
+menos cargado (`cmax - cmin`) MÁS la suma de lo que cada monitor se aleja de
+una carga de referencia `t` (variable libre, queda en la mediana):
+
+    dev[m] ≥ carga_norm[m] - t        dev[m] ≥ t - carga_norm[m]
+
+Solo con `cmax - cmin` los monitores que quedan entre los dos extremos no
+tienen ningún incentivo para acercarse unos a otros (y alguien podía acabar
+con 7 descansos en 8 días mientras otro solo tenía 1). La suma de
+desviaciones empuja a todos hacia el mismo valor. Se normaliza por días de
+presencia (un parámetro fijo, así la expresión sigue siendo lineal) porque
+cada monitor está presente un número distinto de días.
+
+No entran en el reparto: los monitores de fin de semana (no están los mismos
+días que el resto) ni los que están muy pocos días (con 2 días de presencia,
+un solo turno ya los dispara y fijarían el rango de todos los demás).
 
 Con `y` fijada por ASIG_DEPENDIENTE, la parte de dependiente de `carga[m]`
 es una constante para ese monitor, pero se incluye igual: el reparto de los
@@ -17,14 +29,22 @@ Si en `resolver.py` se activa el modo de dos fases, la fase 2 añade la cota
 `cmax - cmin <= optimo_fase1 * (1 + MIP_GAP)` y reoptimiza el resto de
 términos del objetivo con este valor casi fijado.
 """
-from pyomo.environ import Constraint, NonNegativeReals, Var
+from pyomo.environ import Constraint, NonNegativeReals, Set, Var
+
+# Días de presencia mínimos para entrar en el reparto (si todos están menos días, el máximo que haya)
+MIN_DIAS_EQUIDAD = 4
 
 from .base import restriccion
 
 
 @restriccion("equidad_esfuerzo")
 def aplicar(m, datos, cfg):
-    monitores_validos = [mo for mo in datos.monitores if datos.dias_presente.get(mo, 0) > 0]
+    con_dias = [mo for mo in datos.monitores if datos.dias_presente.get(mo, 0) > 0]
+    if not con_dias:
+        return
+    umbral = min(MIN_DIAS_EQUIDAD, max(datos.dias_presente[mo] for mo in con_dias))
+    monitores_validos = [mo for mo in con_dias
+                         if datos.dias_presente[mo] >= umbral and datos.monitores[mo].permite_descanso]
     if not monitores_validos:
         return
 
@@ -55,3 +75,17 @@ def aplicar(m, datos, cfg):
 
     m.c_equidad_max = Constraint(monitores_validos, rule=regla_max)
     m.c_equidad_min = Constraint(monitores_validos, rule=regla_min)
+
+    # Desviación de cada monitor respecto a la carga de referencia
+    m.equi_ref = Var(domain=NonNegativeReals)
+    m.equi_monitores = Set(initialize=monitores_validos)
+    m.dev_equidad = Var(m.equi_monitores, domain=NonNegativeReals)
+
+    def regla_dev_arriba(m, mo):
+        return m.dev_equidad[mo] >= carga_expr(mo) / datos.dias_presente[mo] - m.equi_ref
+
+    def regla_dev_abajo(m, mo):
+        return m.dev_equidad[mo] >= m.equi_ref - carga_expr(mo) / datos.dias_presente[mo]
+
+    m.c_dev_arriba = Constraint(m.equi_monitores, rule=regla_dev_arriba)
+    m.c_dev_abajo = Constraint(m.equi_monitores, rule=regla_dev_abajo)
