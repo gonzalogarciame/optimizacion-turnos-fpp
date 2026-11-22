@@ -48,6 +48,13 @@ class Config:
     # (ver PLAZAS_MAX_POR_DIA). Menor que el de dejar descansar a un monitor de
     # fin de semana y mayor que el beneficio de equilibrar esfuerzo con extras.
     w_extra: float = 40.0
+    # Cada monitor (salvo los de fin de semana) descansa entre estos porcentajes de los días que está disponible.
+    descanso_min_pct: float = 30.0
+    descanso_max_pct: float = 50.0
+    # Coste de cada día de descanso fuera de ese margen (menor que W_FALTA: cubrir los turnos manda).
+    w_descanso_pct: float = 5000.0
+    # True cuando solo se genera un tramo del campamento (ver `ajustar_horizonte`)
+    horizonte_recortado: bool = False
 
     @property
     def dias(self) -> List[int]:

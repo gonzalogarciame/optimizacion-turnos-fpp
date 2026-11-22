@@ -22,6 +22,7 @@ from pathlib import Path
 from ..almacen.cargar import leer_datos_db
 from ..almacen.esquema import abrir
 from ..almacen.importar import importar_excel
+from ..almacen.plantilla import completar_campamento
 from ..modelo.errores import ErrorDatos
 from ..modelo.datos import Datos
 from ..nombres import ErrorNombreNoReconocido
@@ -71,6 +72,7 @@ def cargar(ruta: str, desde: Optional[int] = None) -> bool:
     """Lee el campamento. `desde` (opcional) fija el día de re-optimización."""
     try:
         ruta = resolver_ruta(ruta)
+        completar_campamento(ruta)  # reglas y parámetros añadidos después de crear el campamento
         cfg = _cfg_basica(ruta)
         dia_inicio = int(cfg["DIA_INICIO"])
         datos = leer_datos_db(ruta, desde=dia_inicio)

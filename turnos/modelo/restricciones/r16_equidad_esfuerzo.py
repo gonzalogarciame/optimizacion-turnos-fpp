@@ -76,6 +76,11 @@ def aplicar(m, datos, cfg):
     m.c_equidad_max = Constraint(monitores_validos, rule=regla_max)
     m.c_equidad_min = Constraint(monitores_validos, rule=regla_min)
 
+    # Con `descanso_porcentaje` activa los descansos ya van acotados entre dos porcentajes y la suma de
+    # desviaciones solo hace el modelo mucho más lento (en un campamento real no llegaba a cubrir todos los turnos).
+    if datos.restriccion_activa("descanso_porcentaje"):
+        return
+
     # Desviación de cada monitor respecto a la carga de referencia
     m.equi_ref = Var(domain=NonNegativeReals)
     m.equi_monitores = Set(initialize=monitores_validos)

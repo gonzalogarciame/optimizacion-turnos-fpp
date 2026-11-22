@@ -18,6 +18,9 @@ CONFIG_BASE: List[Tuple[str, str, str]] = [
     ("W_VARIEDAD", "20", "Peso: cada pareja monitor-dependiente distinta"),
     ("W_REPETICION", "5", "Peso: repetir el mismo turno dos días seguidos"),
     ("W_FALTA_DESC", "50", "Peso: incumplir el descanso mínimo"),
+    ("DESCANSO_MIN_PCT", "30", "Cada monitor descansa al menos este % de los días que está disponible"),
+    ("DESCANSO_MAX_PCT", "50", "Cada monitor descansa como mucho este % de los días que está disponible"),
+    ("W_DESCANSO_PCT", "5000", "Peso: cada día de descanso fuera de ese margen (menor que W_FALTA)"),
 ]
 
 
@@ -47,6 +50,10 @@ TURNOS_HABITUALES = [
     ("vigilancia_D_chicas", 1, "F", "Vigilancia de dependientes. Nocturno."),
 ]
 
+# Lo incorporado después de la primera versión (los campamentos antiguos lo reciben con `completar_campamento`)
+CLAVES_NUEVAS = {"DESCANSO_MIN_PCT", "DESCANSO_MAX_PCT", "W_DESCANSO_PCT"}
+REGLAS_NUEVAS = {"descanso_porcentaje"}
+
 D, B = "DURA", "BLANDA"
 RESTRICCIONES: List[Tuple[str, str, str]] = [
     ("cobertura", D, "Cada turno se cubre con sus plazas (con holgura penalizada)"),
@@ -69,4 +76,38 @@ RESTRICCIONES: List[Tuple[str, str, str]] = [
     ("variedad_dependiente", B, "Minimiza el número de parejas monitor-acampado"),
     ("no_repetir_turno", B, "Evita el mismo turno dos días seguidos"),
     ("descanso_minimo", B, "Al menos DIAS_DESCANSO_MINIMO por ventana"),
+    ("descanso_porcentaje", D, "Cada monitor descansa entre DESCANSO_MIN_PCT % y DESCANSO_MAX_PCT % de sus días disponibles"),
 ]
+
+
+def completar_campamento(ruta: str) -> None:
+    """Añade a un campamento ya creado las reglas y parámetros que se incorporaron después.
+
+    Así los campamentos antiguos reciben, por ejemplo, el margen de descansos sin tener que recrearlos.
+    No toca nada de lo que ya existe. Si la base de datos no se puede escribir, no hace nada.
+    """
+    import sqlite3
+
+    from .esquema import abrir
+
+    try:
+        con = abrir(ruta)
+    except (FileNotFoundError, sqlite3.Error):
+        return
+    try:
+        with con:
+            tiene = {r["clave"] for r in con.execute("SELECT clave FROM config")}
+            for clave, valor, descripcion in CONFIG_BASE:
+                if clave not in tiene and clave in CLAVES_NUEVAS:
+                    con.execute("INSERT INTO config (clave, valor, descripcion) VALUES (?, ?, ?)", (clave, valor, descripcion))
+            reglas = {r["nombre"] for r in con.execute("SELECT nombre FROM restricciones")}
+            orden = con.execute("SELECT COALESCE(MAX(orden), -1) FROM restricciones").fetchone()[0]
+            for nombre, tipo, descripcion in RESTRICCIONES:
+                if nombre in REGLAS_NUEVAS and nombre not in reglas:
+                    orden += 1
+                    con.execute("INSERT INTO restricciones (orden, nombre, activa, tipo, descripcion) VALUES (?, ?, 1, ?, ?)",
+                                (orden, nombre, tipo, descripcion))
+    except sqlite3.Error:
+        pass
+    finally:
+        con.close()

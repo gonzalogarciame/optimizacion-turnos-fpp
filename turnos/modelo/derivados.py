@@ -5,6 +5,7 @@ fuente rellena lo que lee tal cual, y después se llama a estas funciones.
 """
 from __future__ import annotations
 
+import math
 from typing import Dict, Tuple
 
 from .datos import NO_PRESENTE, POR_DECIDIR, Datos
@@ -16,6 +17,25 @@ def calcular_dias_presente(disponibilidad, monitores, dias) -> Dict[str, int]:
         m: sum(1 for d in dias if disponibilidad[(m, d)] in ("D", "R"))
         for m in monitores
     }
+
+
+def limites_descanso(dias_presente: int, min_pct: float, max_pct: float, estricto: bool = True) -> Tuple[int, int]:
+    """(mínimo, máximo) de días de descanso de un monitor que está `dias_presente` días.
+
+    Estricto (el campamento entero): se redondea hacia dentro para que el porcentaje real nunca quede
+    fuera de [min_pct, max_pct]. Si no cabe ningún entero (p. ej. 1 día presente) devuelve mínimo >
+    máximo y la regla no se aplica a ese monitor.
+
+    No estricto (solo un tramo del campamento): se redondea hacia fuera. Con pocos días el redondeo
+    hacia dentro exigiría más descansos de los que hay en total (p. ej. 2 de 6 días es el 33 %).
+    """
+    if estricto:
+        lo = math.ceil(min_pct * dias_presente / 100 - 1e-9)
+        hi = math.floor(max_pct * dias_presente / 100 + 1e-9)
+    else:
+        lo = math.floor(min_pct * dias_presente / 100 + 1e-9)
+        hi = math.ceil(max_pct * dias_presente / 100 - 1e-9)
+    return max(lo, 0), hi
 
 
 def calcular_plazas_tope(plazas, historico_x, fijaciones) -> Dict[Tuple[str, int], int]:

@@ -22,7 +22,7 @@ from pyomo.environ import Objective, minimize
 
 # Peso de la suma de desviaciones respecto a W_EQUIDAD. Con el peso entero el solver tarda mucho más
 # y, con el límite de tiempo de un campamento real, a veces deja turnos sin cubrir; con 0.2 reparte
-# mejor que con solo cmax-cmin y sigue cubriéndolo todo.
+# mejor que con solo cmax-cmin y sigue cubriéndolo todo. Solo se usa si `descanso_porcentaje` está apagada.
 FACTOR_DESVIACION = 0.2
 
 # nombre de la restricción (o penalización interna) -> atributo de Config con su peso
@@ -34,6 +34,7 @@ PESO_POR_PENALIZACION = {
     "variedad_dependiente": "w_variedad",
     "no_repetir_turno": "w_repeticion",
     "descanso_minimo": "w_falta_desc",
+    "descanso_porcentaje": "w_descanso_pct",
 }
 
 

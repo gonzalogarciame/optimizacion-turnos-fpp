@@ -476,3 +476,7 @@ label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px;
 .campo-base select { padding: 7px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; background: #fff; }
 .pequeno { font-size: 12px; }
 label.check[hidden] { display: none; }
+
+/* informe: fuera del margen de descansos */
+.barra-relleno.fuera { background: #d92d20; }
+.texto-error { color: #b42318; }

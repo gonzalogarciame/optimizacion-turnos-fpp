@@ -58,6 +58,7 @@ from ..almacen.rejilla import (
     leer_rejilla_db,
 )
 from ..io_excel.estructura import ErrorPlazas
+from ..modelo.derivados import limites_descanso
 from ..modelo.errores import ErrorDatos
 from ..modelo.revision import Celda, revisar_asignaciones
 from ..modelo.construir import ErrorModeloInconsistente, construir_modelo
@@ -509,6 +510,9 @@ def crear_app() -> Flask:
             "W_VARIEDAD": cfg.w_variedad,
             "W_REPETICION": cfg.w_repeticion,
             "W_FALTA_DESC": cfg.w_falta_desc,
+            "DESCANSO_MIN_PCT": cfg.descanso_min_pct,
+            "DESCANSO_MAX_PCT": cfg.descanso_max_pct,
+            "W_DESCANSO_PCT": cfg.w_descanso_pct,
         })
 
     @app.post("/api/config")
@@ -789,21 +793,24 @@ def crear_app() -> Flask:
 
         # Descansos sobre los días que cada monitor está disponible (en los días con turnos)
         ratio, resumen = [], None
+        pmin, pmax = datos.cfg.descanso_min_pct, datos.cfg.descanso_max_pct
         for mo in datos.monitores:
             if mo in finde:
                 continue
             disponibles = sum(1 for d in dias if datos.disponibilidad.get((mo, d), "D") != "X")
             if disponibles:
                 n = descansos.get(mo, 0)
+                lo, hi = limites_descanso(disponibles, pmin, pmax, estricto=dias[-1] >= datos.cfg.dia_fin)
                 ratio.append({"label": f"{mo} ({n} de {disponibles})", "valor": round(100 * n / disponibles),
-                              "descansos": n, "disponibles": disponibles})
+                              "descansos": n, "disponibles": disponibles, "fuera": lo <= hi and not lo <= n <= hi})
         if ratio:
             ratio.sort(key=lambda r: -r["valor"])
             valores = [r["valor"] for r in ratio]
             media = sum(valores) / len(valores)
             resumen = {"monitores": len(valores), "media": round(media), "minimo": min(valores), "maximo": max(valores),
                        "desviacion": round((sum((v - media) ** 2 for v in valores) / len(valores)) ** 0.5),
-                       "total_descansos": sum(r["descansos"] for r in ratio), "total_disponibles": sum(r["disponibles"] for r in ratio)}
+                       "total_descansos": sum(r["descansos"] for r in ratio), "total_disponibles": sum(r["disponibles"] for r in ratio),
+                       "margen_min": pmin, "margen_max": pmax, "fuera": sum(1 for r in ratio if r["fuera"])}
         dias_dep = {mo: v for mo, v in dias_dep.items() if mo not in finde}
 
         falta = {}

@@ -36,6 +36,9 @@ _CLAVES_OBLIGATORIAS = {
 _CLAVES_OPCIONALES = {
     "MAX_DIAS_POR_DEP": ("max_dias_por_dep", int),
     "W_EXTRA": ("w_extra", float),
+    "DESCANSO_MIN_PCT": ("descanso_min_pct", float),
+    "DESCANSO_MAX_PCT": ("descanso_max_pct", float),
+    "W_DESCANSO_PCT": ("w_descanso_pct", float),
 }
 
 # La hoja puede traer el nombre de la clave de año con o sin tilde según la
@@ -112,6 +115,8 @@ def config_desde_pares(pares: Dict[str, Any]) -> Config:
 
     cfg = Config(**kwargs)
 
+    if not (0 <= cfg.descanso_min_pct <= cfg.descanso_max_pct <= 100):
+        raise ValueError("CONFIG: DESCANSO_MIN_PCT y DESCANSO_MAX_PCT deben cumplir 0 <= mínimo <= máximo <= 100")
     if cfg.dia_inicio > cfg.dia_fin:
         raise ValueError("CONFIG: DIA_INICIO no puede ser posterior a DIA_FIN")
     if not (cfg.dia_inicio <= cfg.dia_reoptimizacion <= cfg.dia_fin + 1):
@@ -132,7 +137,7 @@ def ajustar_horizonte(cfg: Config, desde: int = None, hasta: int = None) -> Conf
             raise ValueError(f"El último día a generar ({hasta}) debe estar entre {cfg.dia_inicio} y {cfg.dia_fin}")
         if desde is not None and hasta < desde:
             raise ValueError(f"El último día a generar ({hasta}) no puede ser anterior al primero ({desde})")
-        cfg = replace(cfg, dia_fin=hasta)
+        cfg = replace(cfg, horizonte_recortado=hasta < cfg.dia_fin, dia_fin=hasta)
     if desde is not None:
         cfg = sobrescribir_dia_reoptimizacion(cfg, desde)
     return cfg

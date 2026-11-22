@@ -28,3 +28,4 @@ from . import r17_penalizar_descanso_limitado  # noqa: F401
 from . import r18_variedad_dependiente  # noqa: F401
 from . import r19_no_repetir_turno  # noqa: F401
 from . import r20_descanso_minimo  # noqa: F401
+from . import r21_descanso_porcentaje  # noqa: F401

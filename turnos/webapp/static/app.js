@@ -540,6 +540,9 @@ async function renderRestricciones(cont) {
       <label>W_VARIEDAD <input type="number" id="cfg-w-var" step="1" value="${cfg.W_VARIEDAD}"></label>
       <label>W_REPETICION <input type="number" id="cfg-w-rep" step="1" value="${cfg.W_REPETICION}"></label>
       <label>W_FALTA_DESC <input type="number" id="cfg-w-falta-desc" step="1" value="${cfg.W_FALTA_DESC}"></label>
+      <label>DESCANSO_MIN_PCT <input type="number" id="cfg-pct-min" step="1" min="0" max="100" value="${cfg.DESCANSO_MIN_PCT}"></label>
+      <label>DESCANSO_MAX_PCT <input type="number" id="cfg-pct-max" step="1" min="0" max="100" value="${cfg.DESCANSO_MAX_PCT}"></label>
+      <label>W_DESCANSO_PCT <input type="number" id="cfg-w-pct" step="1" value="${cfg.W_DESCANSO_PCT}"></label>
     </div>
     <button id="btn-guardar-config">Guardar parámetros</button>
     <div id="msg-config"></div>
@@ -582,6 +585,9 @@ async function renderRestricciones(cont) {
         W_VARIEDAD: Number(cont.querySelector("#cfg-w-var").value),
         W_REPETICION: Number(cont.querySelector("#cfg-w-rep").value),
         W_FALTA_DESC: Number(cont.querySelector("#cfg-w-falta-desc").value),
+        DESCANSO_MIN_PCT: Number(cont.querySelector("#cfg-pct-min").value),
+        DESCANSO_MAX_PCT: Number(cont.querySelector("#cfg-pct-max").value),
+        W_DESCANSO_PCT: Number(cont.querySelector("#cfg-w-pct").value),
       });
       insertarBanner(zona, "exito", "Parámetros guardados.");
       await refrescarResumen();
@@ -601,7 +607,7 @@ function dibujarSerie(contenedor, titulo, serie, sufijo = "") {
     bloque.appendChild(elemento(`
       <div class="barra-fila">
         <span class="barra-etiqueta" title="${s.label}">${s.label}</span>
-        <div class="barra-pista"><div class="barra-relleno" style="width:${pct}%"></div></div>
+        <div class="barra-pista"><div class="barra-relleno${s.fuera ? " fuera" : ""}" style="width:${pct}%"></div></div>
         <span class="barra-valor">${s.valor}${sufijo}</span>
       </div>
     `));
@@ -629,7 +635,7 @@ async function renderInforme(cont) {
       zona.lastChild.insertBefore(elemento(`<p class="muted">Descansos ÷ días que el monitor está disponible (en los días con turnos).
         Entre todos descansan el <b>${s.media}%</b> de los días disponibles (${s.total_descansos} de ${s.total_disponibles});
         el que menos, ${s.minimo}%, y el que más, ${s.maximo}% (desviación típica ${s.desviacion} puntos).
-        Lo normal es que los porcentajes se parezcan: si algún monitor se aleja mucho, merece una revisión.</p>`), zona.lastChild.children[1]);
+        ${s.fuera ? `<b class="texto-error">${s.fuera} monitor(es) quedan fuera del margen ${s.margen_min}–${s.margen_max}% (barras rojas): los datos no dejaban cumplirlo.</b>` : `Todos están dentro del margen ${s.margen_min}–${s.margen_max}%.`}</p>`), zona.lastChild.children[1]);
     }
     dibujarSerie(zona, "Descansos por monitor", r.descansos);
     dibujarSerie(zona, "Días de dependiente por monitor", r.dias_dependiente_monitor);
