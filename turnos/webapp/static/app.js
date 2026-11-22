@@ -351,6 +351,11 @@ async function renderTurnosDependientes(cont) {
     api("GET", "/api/dependientes"),
   ]);
 
+  // Días en los que se puede empezar algo nuevo: los anteriores al de re-optimización ya son historia.
+  const reopt = info.dia_reoptimizacion ?? info.dias[0];
+  const diasNuevos = info.dias.filter((d) => d >= reopt);
+  const opcionesDia = (diasNuevos.length ? diasNuevos : info.dias).map((d) => `<option value="${d}">día ${d}</option>`).join("");
+
   cont.innerHTML = `
     <h2>Turnos y dependientes</h2>
 
@@ -375,10 +380,11 @@ async function renderTurnosDependientes(cont) {
 
     <div class="seccion">
       <h3>Añadir turno nuevo</h3>
-      <p class="subtitulo">Reserva plazas nuevas en la rejilla de TURNOS. Los días anteriores al de
-      re-optimización se dejan con 0 plazas (el turno no existía entonces).</p>
+      <p class="subtitulo">Reserva plazas nuevas en la rejilla de TURNOS. Los días anteriores al
+      primero se dejan con 0 plazas (el turno no existía entonces).</p>
       <div class="form-inline">
         <label>Nombre <input type="text" id="nt-nombre"></label>
+        <label>Primer día <select id="nt-inicio">${opcionesDia}</select></label>
         <label>Plazas <input type="number" id="nt-plazas" value="1" min="1"></label>
         <label>Sexo requerido
           <select id="nt-sexo"><option value="-">-</option><option value="M">M</option><option value="F">F</option></select>
@@ -399,12 +405,23 @@ async function renderTurnosDependientes(cont) {
     </div>
 
     <div class="seccion">
+      <h3>Ausencias de dependientes</h3>
+      <p class="subtitulo">Marca los días en que un dependiente no está en el campamento: ese día no
+      hace falta asignarle ningún monitor (y el monitor queda libre para otro turno). Los días
+      anteriores al de re-optimización (${reopt}) no se pueden cambiar.</p>
+      <div id="grid-ausencias" class="tabla-scroll"></div>
+      <button id="btn-guardar-ausencias" style="margin-top:8px;">Guardar ausencias</button>
+      <div id="msg-ausencias"></div>
+    </div>
+
+    <div class="seccion">
       <h3>Añadir dependiente nuevo</h3>
-      <p class="subtitulo">Los días anteriores al de re-optimización quedan marcados '-' (no
-      presente): si en realidad ya estaba, rellena esas celdas a mano en ASIG_DEPENDIENTE. Los días
-      futuros los decide el modelo.</p>
+      <p class="subtitulo">Los días anteriores al primero quedan marcados '-' (no presente): si en
+      realidad ya estaba, rellena esas celdas a mano en la Rejilla. Los días siguientes los decide el
+      modelo. Si va a faltar otros días, márcalos abajo en «Ausencias».</p>
       <div class="form-inline">
         <label>Nombre del acampado <input type="text" id="nd-nombre"></label>
+        <label>Primer día <select id="nd-inicio">${opcionesDia}</select></label>
         <label>Sexo del monitor requerido
           <select id="nd-sexo"><option value="-">-</option><option value="M">M</option><option value="F">F</option></select>
         </label>
@@ -463,6 +480,7 @@ async function renderTurnosDependientes(cont) {
     try {
       await api("POST", "/api/tipos_turno/nuevo", {
         nombre: cont.querySelector("#nt-nombre").value,
+        dia_inicio: cont.querySelector("#nt-inicio").value,
         plazas: cont.querySelector("#nt-plazas").value,
         sexo_req: cont.querySelector("#nt-sexo").value,
         esfuerzo: cont.querySelector("#nt-esfuerzo").value,
@@ -491,12 +509,40 @@ async function renderTurnosDependientes(cont) {
     } catch (e) { insertarBanner(zona, "error", e.message); }
   });
 
+  // Ausencias: una casilla por dependiente y día.
+  const ausencias = await api("GET", "/api/dependientes/ausencias");
+  const nombresDep = Object.keys(ausencias);
+  const zonaAus = cont.querySelector("#grid-ausencias");
+  if (!nombresDep.length) {
+    zonaAus.innerHTML = `<p class="subtitulo">No hay dependientes.</p>`;
+    cont.querySelector("#btn-guardar-ausencias").hidden = true;
+  } else {
+    zonaAus.innerHTML = `<table class="tabla-ausencias"><thead><tr><th>Acampado</th>${
+      info.dias.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>${
+      nombresDep.map((n) => `<tr><td>${esc(n)}</td>${info.dias.map((d) =>
+        `<td><input type="checkbox" data-n="${esc(n)}" data-d="${d}" ${ausencias[n].includes(d) ? "checked" : ""} ${d < reopt ? "disabled" : ""}></td>`
+      ).join("")}</tr>`).join("")}</tbody></table>`;
+    cont.querySelector("#btn-guardar-ausencias").addEventListener("click", async () => {
+      const zona = cont.querySelector("#msg-ausencias");
+      zona.innerHTML = "";
+      const envio = {};
+      nombresDep.forEach((n) => { envio[n] = []; });
+      zonaAus.querySelectorAll("input[type=checkbox]:checked").forEach((c) => envio[c.dataset.n].push(Number(c.dataset.d)));
+      try {
+        await api("POST", "/api/dependientes/ausencias", { ausencias: envio });
+        insertarBanner(zona, "exito", "Ausencias guardadas. Vuelve a optimizar para que se tengan en cuenta.");
+        await refrescarResumen();
+      } catch (e) { insertarBanner(zona, "error", e.message); }
+    });
+  }
+
   cont.querySelector("#btn-nuevo-dep").addEventListener("click", async () => {
     const zona = cont.querySelector("#msg-nuevo-dep");
     zona.innerHTML = "";
     try {
       await api("POST", "/api/dependientes/nuevo", {
         acampado: cont.querySelector("#nd-nombre").value,
+        dia_inicio: cont.querySelector("#nd-inicio").value,
         sexo_req: cont.querySelector("#nd-sexo").value,
         esfuerzo: cont.querySelector("#nd-esfuerzo").value,
       });

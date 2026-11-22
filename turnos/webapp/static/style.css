@@ -480,3 +480,12 @@ label.check[hidden] { display: none; }
 /* informe: fuera del margen de descansos */
 .barra-relleno.fuera { background: #d92d20; }
 .texto-error { color: #b42318; }
+
+/* Ausencias de dependientes: una casilla por día */
+.tabla-scroll { overflow-x: auto; }
+.tabla-ausencias { border-collapse: collapse; background: #fff; border: 1px solid var(--borde); font-size: 13px; }
+.tabla-ausencias th { padding: 6px 8px; background: #f9fafb; color: var(--muted); font-weight: 600; text-align: center; }
+.tabla-ausencias th:first-child, .tabla-ausencias td:first-child { text-align: left; padding: 6px 12px; white-space: nowrap; }
+.tabla-ausencias td { padding: 4px 8px; text-align: center; border-top: 1px solid var(--borde); }
+.tabla-ausencias input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+.tabla-ausencias input[type=checkbox]:disabled { cursor: not-allowed; opacity: .4; }
