@@ -623,6 +623,14 @@ async function renderInforme(cont) {
       zona.appendChild(elemento(`<p class="muted nota-informe" title="${esc(r.excluidos_finde.join(", "))}">Las comparaciones entre monitores no incluyen a los ${r.excluidos_finde.length} monitores de fin de semana, porque no están los mismos días que el resto.</p>`));
     }
     dibujarSerie(zona, "Esfuerzo normalizado por monitor", r.esfuerzo);
+    if (r.descanso_resumen) {
+      const s = r.descanso_resumen;
+      dibujarSerie(zona, "Descansos sobre días disponibles", r.descanso_ratio, "%");
+      zona.lastChild.insertBefore(elemento(`<p class="muted">Descansos ÷ días que el monitor está disponible (en los días con turnos).
+        Entre todos descansan el <b>${s.media}%</b> de los días disponibles (${s.total_descansos} de ${s.total_disponibles});
+        el que menos, ${s.minimo}%, y el que más, ${s.maximo}% (desviación típica ${s.desviacion} puntos).
+        Lo normal es que los porcentajes se parezcan: si algún monitor se aleja mucho, merece una revisión.</p>`), zona.lastChild.children[1]);
+    }
     dibujarSerie(zona, "Descansos por monitor", r.descansos);
     dibujarSerie(zona, "Días de dependiente por monitor", r.dias_dependiente_monitor);
     if (r.falta.length) dibujarSerie(zona, "Turnos sin cubrir", r.falta);

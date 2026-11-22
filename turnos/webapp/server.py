@@ -755,7 +755,12 @@ def crear_app() -> Flask:
                             "falta": [], "excluidos_finde": [], "dias": []})
 
         # Solo cuentan los días que ya tienen algo escrito.
-        dias = sorted({d for _, _, d, _ in filas if d in datos.dias})
+        # (los dependientes fijados llegan hasta el final del campamento aunque los turnos aún no estén generados,
+        # así que los días se miden por turnos y descansos)
+        dias = sorted({d for tipo, _, d, _ in filas if tipo != "dependiente" and d in datos.dias})
+        if not dias:
+            return jsonify({"vacio": True, "esfuerzo": [], "descansos": [], "dias_dependiente_monitor": [],
+                            "falta": [], "excluidos_finde": [], "dias": []})
         # Los monitores de fin de semana no están los mismos días que el resto: comparar su esfuerzo,
         # descansos o dependientes con los demás no tiene sentido, así que no entran en el informe.
         finde = {mo for mo, mon in datos.monitores.items() if not mon.permite_descanso}
@@ -781,6 +786,24 @@ def crear_app() -> Flask:
             if presente:
                 esfuerzo[mo] = carga.get(mo, 0.0) / presente
         descansos = {mo: v for mo, v in descansos.items() if mo not in finde}
+
+        # Descansos sobre los días que cada monitor está disponible (en los días con turnos)
+        ratio, resumen = [], None
+        for mo in datos.monitores:
+            if mo in finde:
+                continue
+            disponibles = sum(1 for d in dias if datos.disponibilidad.get((mo, d), "D") != "X")
+            if disponibles:
+                n = descansos.get(mo, 0)
+                ratio.append({"label": f"{mo} ({n} de {disponibles})", "valor": round(100 * n / disponibles),
+                              "descansos": n, "disponibles": disponibles})
+        if ratio:
+            ratio.sort(key=lambda r: -r["valor"])
+            valores = [r["valor"] for r in ratio]
+            media = sum(valores) / len(valores)
+            resumen = {"monitores": len(valores), "media": round(media), "minimo": min(valores), "maximo": max(valores),
+                       "desviacion": round((sum((v - media) ** 2 for v in valores) / len(valores)) ** 0.5),
+                       "total_descansos": sum(r["descansos"] for r in ratio), "total_disponibles": sum(r["disponibles"] for r in ratio)}
         dias_dep = {mo: v for mo, v in dias_dep.items() if mo not in finde}
 
         falta = {}
@@ -798,6 +821,8 @@ def crear_app() -> Flask:
             "dias": dias,
             "esfuerzo": _serie(esfuerzo),
             "descansos": _serie(descansos, 0),
+            "descanso_ratio": ratio,
+            "descanso_resumen": resumen,
             "dias_dependiente_monitor": _serie(dias_dep, 0),
             "falta": _serie(falta, 0),
             "excluidos_finde": sorted(finde),

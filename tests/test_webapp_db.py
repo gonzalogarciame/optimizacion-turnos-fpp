@@ -206,6 +206,9 @@ def test_generar_un_dia_proponer_y_aplicar(cliente):
     assert finde and set(inf["excluidos_finde"]) == finde
     for serie in ("esfuerzo", "descansos", "dias_dependiente_monitor"):
         assert not finde & {x["label"] for x in inf[serie]}  # los de fin de semana no se comparan con los demás
+    assert inf["descanso_resumen"] and inf["descanso_ratio"]
+    assert all(0 <= x["valor"] <= 100 and x["descansos"] <= x["disponibles"] for x in inf["descanso_ratio"])
+    assert not finde & {x["label"].rsplit(" (", 1)[0] for x in inf["descanso_ratio"]}
     # el informe sale de lo escrito en la rejilla: sigue ahí aunque se recargue y no haya optimización en memoria
     assert _post(c, "/api/cargar", {"ruta": db}).status_code == 200
     de_nuevo = c.get("/api/informe")
