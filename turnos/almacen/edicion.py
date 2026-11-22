@@ -237,9 +237,34 @@ def guardar_plazas_por_dia_df(ruta: str, df: pd.DataFrame, dias: Iterable[int]) 
         con.close()
 
 
+def _primer_dia(dia_inicio, dias: Iterable[int], dia_reoptimizacion) -> int:
+    """Primer día en que existe lo que se da de alta. Por defecto, el día desde el que se re-optimiza.
+
+    Los días anteriores al de re-optimización son historia (no se pueden cambiar), así que no se admiten.
+    """
+    dias = list(dias)
+    minimo = max(dias[0], dia_reoptimizacion or dias[0])
+    if dia_inicio in (None, ""):
+        return minimo
+    try:
+        dia_inicio = int(dia_inicio)
+    except (TypeError, ValueError):
+        raise ValueError("El día de inicio debe ser un número")
+    if dia_inicio not in dias:
+        raise ValueError(f"El día de inicio debe estar entre {dias[0]} y {dias[-1]}")
+    if dia_inicio < minimo:
+        raise ValueError(f"El día {dia_inicio} ya está cerrado (se re-optimiza desde el {minimo}): elige el {minimo} o uno posterior")
+    return dia_inicio
+
+
 def agregar_tipo_turno(ruta: str, nombre: str, plazas: int, sexo_req: str, esfuerzo: float,
-                       dias: Iterable[int], dia_reoptimizacion: int) -> None:
-    """Turno nuevo. Sus plazas son 0 en los días ya pasados (el turno no existía) y `plazas` en los demás."""
+                       dias: Iterable[int], dia_reoptimizacion: int, dia_inicio=None) -> None:
+    """Turno nuevo. Sus plazas son 0 antes de `dia_inicio` (el turno no existía) y `plazas` desde entonces.
+
+    Sin `dia_inicio` empieza el día desde el que se re-optimiza.
+    """
+    dias = list(dias)
+    inicio = _primer_dia(dia_inicio, dias, dia_reoptimizacion)
     nombre = _texto(nombre)
     if not nombre:
         raise ValueError("El turno necesita un nombre")
@@ -258,7 +283,7 @@ def agregar_tipo_turno(ruta: str, nombre: str, plazas: int, sexo_req: str, esfue
             con.execute("INSERT INTO tipos_turno (orden, turno, plazas, sexo_req, esfuerzo) VALUES (?, ?, ?, ?, ?)",
                         (orden, nombre, plazas, sexo_req, esfuerzo))
             con.executemany("INSERT INTO plazas_dia (turno, dia, plazas) VALUES (?, ?, ?)",
-                            [(nombre, d, 0 if d < dia_reoptimizacion else plazas) for d in dias])
+                            [(nombre, d, 0 if d < inicio else plazas) for d in dias])
     finally:
         con.close()
 
@@ -289,8 +314,13 @@ def guardar_dependientes_df(ruta: str, df: pd.DataFrame) -> None:
 
 
 def agregar_dependiente(ruta: str, acampado: str, sexo_req: str, esfuerzo: float,
-                        dias: Iterable[int], dia_reoptimizacion: int) -> None:
-    """Dependiente nuevo. Los días ya pasados figura como ausente (no se inventa quién lo cuidó)."""
+                        dias: Iterable[int], dia_reoptimizacion: int, dia_inicio=None) -> None:
+    """Dependiente nuevo. Antes de `dia_inicio` figura como ausente (no se inventa quién lo cuidó).
+
+    Sin `dia_inicio` llega el día desde el que se re-optimiza.
+    """
+    dias = list(dias)
+    inicio = _primer_dia(dia_inicio, dias, dia_reoptimizacion)
     acampado = _texto(acampado)
     if not acampado:
         raise ValueError("El dependiente necesita un nombre")
@@ -305,7 +335,56 @@ def agregar_dependiente(ruta: str, acampado: str, sexo_req: str, esfuerzo: float
             con.execute("INSERT INTO dependientes (orden, acampado, sexo_monitor_req, esfuerzo) VALUES (?, ?, ?, ?)",
                         (orden, acampado, sexo_req, esfuerzo))
             con.executemany("INSERT INTO dependiente_ausente (acampado, dia) VALUES (?, ?)",
-                            [(acampado, d) for d in dias if d < dia_reoptimizacion])
+                            [(acampado, d) for d in dias if d < inicio])
+    finally:
+        con.close()
+
+
+def leer_ausencias(ruta: str) -> Dict[str, List[int]]:
+    """{acampado: [días en que no está]}. Ese día no hace falta ningún monitor para él."""
+    con = abrir(ruta)
+    try:
+        res: Dict[str, List[int]] = {r["acampado"]: [] for r in con.execute("SELECT acampado FROM dependientes ORDER BY orden")}
+        for r in con.execute("SELECT acampado, dia FROM dependiente_ausente ORDER BY dia"):
+            res.setdefault(r["acampado"], []).append(r["dia"])
+    finally:
+        con.close()
+    return res
+
+
+def guardar_ausencias(ruta: str, ausencias: Dict[str, Iterable[int]], dias: Iterable[int], dia_reoptimizacion) -> None:
+    """Fija los días de ausencia de cada dependiente indicado (solo desde el día de re-optimización).
+
+    Los días ya cerrados no se tocan. Si un día pasa a ausente, se borra el monitor que tuviera asignado ese día.
+    """
+    dias = list(dias)
+    minimo = max(dias[0], dia_reoptimizacion or dias[0])
+    con = abrir(ruta)
+    try:
+        conocidos = {r["acampado"] for r in con.execute("SELECT acampado FROM dependientes")}
+        for nombre in ausencias:
+            if nombre not in conocidos:
+                raise ValueError(f"El dependiente '{nombre}' no existe")
+        with con:
+            for nombre, lista in ausencias.items():
+                quiere = set()
+                for d in lista:
+                    try:
+                        d = int(d)
+                    except (TypeError, ValueError):
+                        raise ValueError(f"Día no válido para {nombre}: {d!r}")
+                    if d not in dias:
+                        raise ValueError(f"El día {d} está fuera del campamento ({dias[0]}–{dias[-1]})")
+                    quiere.add(d)
+                actuales = {r["dia"] for r in con.execute("SELECT dia FROM dependiente_ausente WHERE acampado = ?", (nombre,))}
+                for d in (quiere - actuales):
+                    if d < minimo:
+                        raise ValueError(f"El día {d} ya está cerrado (se re-optimiza desde el {minimo})")
+                    con.execute("INSERT INTO dependiente_ausente (acampado, dia) VALUES (?, ?)", (nombre, d))
+                    con.execute("DELETE FROM asignaciones WHERE tipo = 'dependiente' AND clave = ? AND dia = ?", (nombre, d))
+                for d in (actuales - quiere):
+                    if d >= minimo:
+                        con.execute("DELETE FROM dependiente_ausente WHERE acampado = ? AND dia = ?", (nombre, d))
     finally:
         con.close()
 

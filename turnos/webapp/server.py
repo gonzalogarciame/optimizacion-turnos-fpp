@@ -30,6 +30,7 @@ from ..almacen.edicion import (
     agregar_dependiente,
     agregar_tipo_turno,
     guardar_config_valores,
+    guardar_ausencias,
     guardar_dependientes_df,
     guardar_disponibilidad_df,
     guardar_monitores_df,
@@ -37,6 +38,7 @@ from ..almacen.edicion import (
     guardar_plazas_por_dia_df,
     guardar_restricciones_df,
     guardar_tipos_turno_df,
+    leer_ausencias,
     leer_dependientes_df,
     leer_disponibilidad_df,
     leer_monitores_df,
@@ -421,6 +423,7 @@ def crear_app() -> Flask:
                 float(cuerpo.get("esfuerzo", 0)),
                 datos.dias,
                 estado.desde(),
+                cuerpo.get("dia_inicio"),
             )
         except ValueError as exc:
             return _error(str(exc))
@@ -463,7 +466,30 @@ def crear_app() -> Flask:
                 float(cuerpo.get("esfuerzo", 0)),
                 datos.dias,
                 estado.desde(),
+                cuerpo.get("dia_inicio"),
             )
+        except ValueError as exc:
+            return _error(str(exc))
+        estado.cargar(ruta)
+        return jsonify({"ok": True})
+
+    @app.get("/api/dependientes/ausencias")
+    def api_ausencias_get():
+        ctx = _con_datos()
+        if ctx is None:
+            return _error("No hay ningún campamento cargado")
+        _, ruta = ctx
+        return jsonify(leer_ausencias(ruta))
+
+    @app.post("/api/dependientes/ausencias")
+    def api_ausencias_post():
+        ctx = _con_datos()
+        if ctx is None:
+            return _error("No hay ningún campamento cargado")
+        datos, ruta = ctx
+        cuerpo = request.get_json(force=True) or {}
+        try:
+            guardar_ausencias(ruta, cuerpo.get("ausencias") or {}, datos.dias, estado.desde())
         except ValueError as exc:
             return _error(str(exc))
         estado.cargar(ruta)
