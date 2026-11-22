@@ -335,6 +335,9 @@ function actualizarCuentas() {
     DP.el.cont.querySelector("#disp-descartar").disabled = n === 0;
     DP.el.cont.querySelector("#disp-deshacer").disabled = DP.deshacer.length === 0;
   }
+  // Los avisos cambian la altura de la página. Mientras se mantiene el botón pulsado no se tocan: si la tabla se
+  // desplaza, la casilla que queda bajo el ratón es otra y se pintaría también (se actualizan al soltar).
+  if (DP.arrastre) return;
   // Aviso: descanso impuesto a monitores de fin de semana (el generador lo rechaza)
   DP.el.avisos.innerHTML = "";
   const huecos = puestosPorReasignar();
