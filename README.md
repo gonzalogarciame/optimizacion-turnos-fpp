@@ -26,7 +26,7 @@ pip install -r requirements.txt
 python -m turnos.demo        # crea un campamento inventado y abre la web en http://127.0.0.1:5000
 ```
 
-Crea `datos/demo/campamento.db` con 30 monitores, 4 acampados dependientes y 13 días
+Crea `datos/demo/campamento.db` con 34 monitores, 4 acampados dependientes y 13 días
 **inventados** (nada de personas reales), con los 5 primeros días ya generados. Después
 solo hay que pulsar **Generar turnos** para que el optimizador rellene el resto
 (unos segundos; todo el campamento tarda cerca de un minuto con el solver gratuito HiGHS).
@@ -227,6 +227,10 @@ y los días en columnas, leída directamente de la hoja `TURNOS`:
   congelado). «Descartar» no toca el Excel.
   El selector **Días** limita cuántos días se generan (p. ej. 3 días desde el 5 = 5, 6 y 7);
   los posteriores no se tocan y no entran en el modelo.
+- **Informe:** esfuerzo, descansos y días de dependiente por monitor, y los descansos sobre los días
+  disponibles. Cada monitor (salvo los de fin de semana) descansa entre el 30 % y el 50 % de sus días
+  (regla `descanso_porcentaje`, parámetros `DESCANSO_MIN_PCT` y `DESCANSO_MAX_PCT`); si los datos no
+  dejan cumplirlo, el informe marca en rojo a quién afecta.
 - **Disponibilidad:** tabla de colores (verde viene, rojo no viene, amarillo descanso
   impuesto). Se elige un pincel y se pinta con clic o arrastrando; clic en un nombre
   pinta su fila y clic en un día pinta la columna (solo los monitores filtrados).
@@ -341,7 +345,7 @@ turnos/
 │   ├── objetivo.py           # suma ponderada de las penalizaciones registradas por los módulos
 │   └── restricciones/        # una restricción = un módulo enchufable (ver §7.1)
 │       ├── base.py             # decorador @restriccion, REGISTRO, registrar_penalizacion()
-│       └── r01_...r20_*.py     # las reglas activables desde la hoja RESTRICCIONES
+│       └── r01_...r21_*.py     # las reglas activables desde la hoja RESTRICCIONES
 ├── resolver.py             # llama al solver (nombre/tiempo/gap siempre desde CONFIG), extrae Solucion
 ├── validar.py              # validación previa en lenguaje llano + diagnóstico IIS si es infactible
 ├── webapp/                 # interfaz web local, ver más abajo

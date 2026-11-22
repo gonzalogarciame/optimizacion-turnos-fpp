@@ -21,9 +21,9 @@ RUTA_DEMO = "datos/demo/campamento.db"
 ANIO, MES, DIA_INICIO, DIA_FIN = 2026, 8, 1, 13
 
 CHICOS = ["Mateo Ruiz", "Hugo Navarro", "Iván Delgado", "Pablo Ortega", "Diego Santos", "Marcos Vidal",
-          "Adrián Prieto", "Rubén Cabrera", "Óscar Molina", "Nicolás Reyes", "Samuel Campos", "Tomás Beltrán", "Gael Arroyo", "Bruno Salas"]
+          "Adrián Prieto", "Rubén Cabrera", "Óscar Molina", "Nicolás Reyes", "Samuel Campos", "Tomás Beltrán", "Gael Arroyo", "Bruno Salas", "Ismael Rojas", "Álvaro Pastor"]
 CHICAS = ["Lucía Marín", "Carla Soler", "Irene Fuentes", "Marta Blanco", "Julia Herrero", "Alba Peña",
-          "Sara Cortés", "Noa Gallego", "Elena Ibáñez", "Paula Vega", "Claudia Rubio", "Inés Lozano", "Vera Ochoa", "Lola Aguilar"]
+          "Sara Cortés", "Noa Gallego", "Elena Ibáñez", "Paula Vega", "Claudia Rubio", "Inés Lozano", "Vera Ochoa", "Lola Aguilar", "Marina Cano", "Aitana Ríos"]
 FINDE = [("Álex Montero", "M"), ("Rocío Padilla", "F")]  # solo vienen los fines de semana
 NUEVOS = {"Samuel Campos", "Tomás Beltrán", "Inés Lozano", "Claudia Rubio"}
 LIMITADOS = {"Óscar Molina", "Noa Gallego"}  # vienen pocos días: mejor no darles descanso
